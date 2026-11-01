@@ -5,6 +5,8 @@
  * trade recommendations are calculated here.
  */
 
+import { latestSnapshot, type RadarDatabase } from './persistence';
+
 interface KalshiSeries {
   ticker: string;
   title?: string;
@@ -96,7 +98,7 @@ async function kalshiJson<T>(path: string): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-async function scanMarkets() {
+export async function scanMarkets() {
   const seriesReply = await kalshiJson<SeriesReply>('/series?category=Sports&include_volume=true');
   const candidates = (seriesReply.series ?? [])
     .filter((series) => typeof series.ticker === 'string' && leagueOf(series))
@@ -183,7 +185,7 @@ async function scanMarkets() {
   };
 }
 
-export async function handleMarkets(request: Request): Promise<Response> {
+export async function handleMarkets(request: Request, db?: RadarDatabase): Promise<Response> {
   const requestUrl = new URL(request.url);
   const fresh = requestUrl.searchParams.get('fresh') === '1';
   const cacheKey = new Request(new URL('/api/markets', requestUrl.origin).toString());
@@ -195,7 +197,16 @@ export async function handleMarkets(request: Request): Promise<Response> {
   }
 
   try {
-    const result = await scanMarkets();
+    let result: Awaited<ReturnType<typeof scanMarkets>> | null = null;
+    if (db && !fresh) {
+      try {
+        result = await latestSnapshot(db);
+      } catch (error) {
+        // A missing migration or transient D1 fault must not take the public feed down.
+        console.error('D1 latest snapshot unavailable; using live feed', error);
+      }
+    }
+    result ??= await scanMarkets();
     const response = Response.json(result, {
       headers: {
         'Cache-Control': `public, max-age=0, s-maxage=${CACHE_SECONDS}`,

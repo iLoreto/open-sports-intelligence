@@ -32,3 +32,18 @@ export interface RadarResponse {
   };
   notes: string[];
 }
+
+export interface RadarHistoryPoint {
+  sampledAt: string;
+  yesAsk: number | null;
+  yesBid: number | null;
+  lastPrice: number | null;
+  volume24h: number;
+}
+
+export interface RadarHistoryResponse {
+  ticker: string;
+  available: boolean;
+  points: RadarHistoryPoint[];
+  message?: string;
+}
