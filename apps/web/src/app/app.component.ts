@@ -26,9 +26,9 @@ const REFRESH_MS = 30 * 60 * 1000;
 
     <main class="container">
       <section class="hero">
-        <div class="eyebrow"><span class="eyebrow-line"></span> THE INTELLIGENCE TERMINAL <span class="version-tag">V0.2 / NBA COMPARISON</span></div>
+        <div class="eyebrow"><span class="eyebrow-line"></span> THE INTELLIGENCE TERMINAL <span class="version-tag">V0.3 / NBA ELO</span></div>
         <h1>See the market.<br><span>Question the price.</span></h1>
-        <p class="hero-copy">Compare NBA teams using recorded results and reported injuries. Then inspect public market quotes as a separate source—without invented win probabilities.</p>
+        <p class="hero-copy">Compare NBA teams using recorded results, injuries and a historically tested Elo baseline. Experimental model estimates stay separate from public market quotes.</p>
         <div class="hero-actions">
           <span class="source-state"><span class="source-pulse"></span> {{ loading() ? 'SCANNING PUBLIC FEED' : error() ? 'FEED UNAVAILABLE' : 'KALSHI FEED CONNECTED' }}</span>
           <button class="refresh-button" type="button" (click)="refresh(true)" [disabled]="loading() || nbaLoading()" [attr.aria-busy]="loading() || nbaLoading()">
@@ -43,7 +43,7 @@ const REFRESH_MS = 30 * 60 * 1000;
           <div>
             <div class="section-kicker">NBA / MATCHUP RESEARCH</div>
             <h2>Side-by-side comparisons <span class="heading-count">{{ nba()?.games?.length ?? '—' }}</span></h2>
-            <p>Season form, recent meetings and reported injuries for today's and upcoming games. Descriptive stats only.</p>
+            <p>Season form, recent meetings, reported injuries and experimental pregame Elo estimates.</p>
           </div>
           <span class="panel-pill nba-pill">2026–27 SEASON</span>
         </div>
@@ -52,6 +52,22 @@ const REFRESH_MS = 30 * 60 * 1000;
         <ng-container *ngIf="nba() as data">
           <div class="nba-feed-meta">ESPN public basketball feeds · Last fetched {{ dateTime(data.fetchedAt) }} · {{ data.season - 1 }}–{{ data.season.toString().slice(-2) }} season</div>
           <div *ngFor="let warning of data.warnings" class="nba-warning">{{ warning }}</div>
+          <ng-container *ngIf="data.model as model">
+            <div class="nba-model-overview">
+              <div class="nba-model-copy"><strong>{{ model.name }} <span>EXPERIMENTAL</span></strong><p>Out-of-sample evaluation on {{ model.validationGames }} games in {{ model.validationSeason - 1 }}–{{ model.validationSeason.toString().slice(-2) }}. Lower Brier score means more accurate probabilities. No lineups, injuries or sportsbook information enter this model.</p></div>
+              <div class="nba-model-metrics">
+                <div><span>ELO BRIER</span><strong>{{ model.brier.toFixed(3) }}</strong></div>
+                <div><span>HOME-ONLY BASELINE</span><strong>{{ model.baselineBrier.toFixed(3) }}</strong></div>
+              </div>
+            </div>
+            <div class="nba-model-status">{{ model.message }} <span *ngIf="model.available">· {{ model.currentSeasonGames }} current-season games incorporated<span *ngIf="model.resultsThrough"> through {{ dateTime(model.resultsThrough) }}</span>.</span></div>
+            <details class="nba-calibration">
+              <summary>VIEW OUT-OF-SAMPLE CALIBRATION BY PROBABILITY RANGE</summary>
+              <table><thead><tr><th>MODEL RANGE</th><th>GAMES</th><th>PREDICTED HOME</th><th>OBSERVED HOME WINS</th></tr></thead>
+              <tbody><tr *ngFor="let bucket of model.calibration"><td>{{ bucket.bucket }}</td><td>{{ bucket.games }}</td><td>{{ bucket.predicted === null ? '—' : percent(bucket.predicted) }}</td><td>{{ bucket.observed === null ? '—' : percent(bucket.observed) }}</td></tr></tbody></table>
+              <p>Historical validation is not a guarantee of future calibration. The model does not assess betting value.</p>
+            </details>
+          </ng-container>
           <div *ngIf="!data.games.length" class="empty-state">No regular-season NBA games were found in the current 24-hour window.</div>
 
           <div class="nba-matchup" *ngFor="let game of data.games; trackBy: trackGame">
@@ -64,6 +80,16 @@ const REFRESH_MS = 30 * 60 * 1000;
               <div class="nba-versus"><strong *ngIf="game.status === 'scheduled'">VS</strong><strong *ngIf="game.status !== 'scheduled'">{{ game.awayScore ?? '—' }} : {{ game.homeScore ?? '—' }}</strong><small>{{ game.status === 'scheduled' ? 'MATCHUP' : game.status | uppercase }}</small></div>
               <div class="nba-team"><span class="nba-location">HOME</span><strong>{{ game.home.name }}</strong><span class="nba-team-record">{{ game.home.record ?? 'Record unavailable' }}</span></div>
             </div>
+
+            <div *ngIf="game.forecast as projection" class="nba-forecast">
+              <div class="nba-forecast-heading"><span>PREGAME ELO ESTIMATE · EXPERIMENTAL</span><small>Home-court adjustment included</small></div>
+              <div class="nba-forecast-labels"><span>{{ game.away.abbreviation }} <strong>{{ percent(projection.awayWinProbability) }}</strong></span><span>{{ game.home.abbreviation }} <strong>{{ percent(projection.homeWinProbability) }}</strong></span></div>
+              <div class="nba-probability-track" role="img" [attr.aria-label]="game.away.abbreviation + ' modeled win probability ' + percent(projection.awayWinProbability) + ', ' + game.home.abbreviation + ' ' + percent(projection.homeWinProbability)">
+                <span class="nba-prob-away" [style.width.%]="projection.awayWinProbability * 100"></span><span class="nba-prob-home" [style.width.%]="projection.homeWinProbability * 100"></span>
+              </div>
+              <div class="nba-forecast-note">Elo {{ projection.awayElo.toFixed(0) }} / {{ projection.homeElo.toFixed(0) }} · Pregame estimate only; not adjusted for reported injuries.</div>
+            </div>
+            <p *ngIf="game.status === 'scheduled' && !game.forecast" class="nba-forecast-missing">Pregame model unavailable; verified team statistics remain available.</p>
 
             <div class="nba-stat-section-label">SEASON PERFORMANCE · {{ game.away.abbreviation }} / {{ game.home.abbreviation }}</div>
             <table class="nba-stat-table" [attr.aria-label]="game.away.name + ' versus ' + game.home.name + ' season statistics'">
@@ -97,7 +123,7 @@ const REFRESH_MS = 30 * 60 * 1000;
               </details>
             </div>
           </div>
-          <div class="nba-footnote">ESPN-reported statistics and injury reports may lag official updates. No starting lineup, market-implied probability, or independently modeled win chance is claimed. ESPN's public JSON feeds are subject to change.</div>
+          <div class="nba-footnote">ESPN-reported statistics and injuries may lag official updates. Elo provides an independent *experimental* estimate; it is not a calibrated sportsbook line, verified lineup forecast or demonstrated betting edge. ESPN's public JSON feeds are subject to change.</div>
         </ng-container>
       </section>
 
@@ -105,7 +131,7 @@ const REFRESH_MS = 30 * 60 * 1000;
         <div class="stat-item"><span class="stat-label">MARKETS IN VIEW</span><strong>{{ snapshot()?.counts?.returnedMarkets ?? '—' }}</strong><small>Selected sports series</small></div>
         <div class="stat-item"><span class="stat-label">SERIES CHECKED</span><strong>{{ snapshot()?.counts?.scannedSeries ?? '—' }}</strong><small>Kalshi catalog</small></div>
         <div class="stat-item"><span class="stat-label">DATA UPDATED</span><strong class="time-stat">{{ timeLabel() }}</strong><small>Automatic 30-minute refresh</small></div>
-        <div class="stat-item"><span class="stat-label">MODEL STATUS</span><strong class="model-stat">RESEARCH</strong><small>No unverified edge scores</small></div>
+        <div class="stat-item"><span class="stat-label">MODEL STATUS</span><strong class="model-stat">NBA ELO</strong><small>Historical backtest; no edge claim</small></div>
       </section>
 
       <div class="feed-note">
@@ -199,7 +225,7 @@ const REFRESH_MS = 30 * 60 * 1000;
         </div>
       </ng-template>
 
-      <footer class="footer"><div><strong>OPEN SPORTS INTELLIGENCE</strong><span>Independent by design. Transparent by default.</span></div><div>Sources: ESPN public basketball feeds + Kalshi public markets · Data may be delayed · No model forecasts or orders.</div></footer>
+      <footer class="footer"><div><strong>OPEN SPORTS INTELLIGENCE</strong><span>Independent by design. Transparent by default.</span></div><div>Sources: ESPN public basketball feeds + Kalshi public markets · Experimental Elo predictions · No verified edge or account integration.</div></footer>
     </main>
   </div>
   `
@@ -345,6 +371,10 @@ export class AppComponent implements OnInit, OnDestroy {
     if (value === null || !Number.isFinite(value)) return '—';
     const rounded = value.toFixed(1);
     return signed && value > 0 ? `+${rounded}` : rounded;
+  }
+
+  percent(value: number): string {
+    return Number.isFinite(value) ? `${(value * 100).toFixed(1)}%` : '—';
   }
 
   dateTime(timestamp: string): string {
