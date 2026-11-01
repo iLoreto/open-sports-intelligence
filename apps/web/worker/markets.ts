@@ -132,7 +132,7 @@ async function scanMarkets() {
     const { result: payload, series, sport } = result.value;
     if (payload.cursor) incompletePages = true;
     for (const market of payload.markets ?? []) {
-      if (market.status && market.status !== 'open') continue;
+      if (market.status && !['open', 'active'].includes(market.status)) continue;
       scannedMarkets++;
       const lastPrice = numberOrNull(market.last_price_dollars);
       const previousPrice = numberOrNull(market.previous_price_dollars);
