@@ -3,6 +3,16 @@
   "name": "open-sports-intelligence",
   "main": "./worker/index.ts",
   "compatibility_date": "2026-11-01",
+  "triggers": {
+    "crons": ["*/30 * * * *"]
+  },
+  "d1_databases": [
+    {
+      "binding": "RADAR_DB",
+      "database_name": "open-sports-radar",
+      "database_id": "867ffc71-bf0b-4259-a0ca-19fb55b0872f"
+    }
+  ],
   "assets": {
     "directory": "./dist/web/browser",
     "binding": "ASSETS",

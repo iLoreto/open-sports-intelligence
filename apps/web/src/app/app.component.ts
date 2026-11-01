@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnDestroy, OnInit, computed, signal } from '@angular/core';
-import type { RadarMarket, RadarResponse } from './market.model';
+import type { RadarHistoryResponse, RadarMarket, RadarResponse } from './market.model';
 
 const REFRESH_MS = 30 * 60 * 1000;
 
@@ -59,9 +59,42 @@ const REFRESH_MS = 30 * 60 * 1000;
       <ng-container *ngIf="snapshot() as data">
         <div *ngIf="data.counts.partialCoverage" class="coverage-note"><span class="coverage-dash"></span> Initial scan covers a selected subset of sports series. Full-catalog historical collection is the next engineering milestone.</div>
 
+        <section class="radar-panel watch-panel">
+          <div class="panel-heading">
+            <div><div class="section-kicker">01 / PRICE WATCH</div><h2>55–65¢ watch band <span class="heading-count">{{ watch().length }}</span></h2><p>Upcoming-game and championship YES asks in your preferred range. Price alone is not an edge or a recommendation.</p></div>
+            <span class="panel-pill">WATCH ONLY</span>
+          </div>
+          <ng-container *ngTemplateOutlet="marketsTable; context: { rows: watch(), empty: 'No matching markets in the current partial scan.' }"></ng-container>
+        </section>
+
+        <section class="history-panel" *ngIf="selectedMarket() as selected">
+          <div class="history-heading">
+            <div><div class="section-kicker">MARKET HISTORY / LAST 24 HOURS</div><h2>{{ selected.title }}</h2><p>{{ selected.ticker }} · Scheduled 30-minute YES ask samples</p></div>
+            <button type="button" class="history-close" (click)="closeHistory()" aria-label="Close history">×</button>
+          </div>
+          <p class="history-message" *ngIf="historyLoading()">Loading historical samples…</p>
+          <p class="history-message" *ngIf="historyError()" role="alert">{{ historyError() }}</p>
+          <ng-container *ngIf="history() as series">
+            <p class="history-message" *ngIf="!series.available">{{ series.message || 'Historical collection is not enabled yet.' }}</p>
+            <p class="history-message" *ngIf="series.available && chartValues().length < 2">Not enough scheduled samples yet. At least two observations are required to show a trend.</p>
+            <div class="chart-shell" *ngIf="chartValues().length >= 2">
+              <div class="chart-stats"><span>{{ cents(chartMin()) }} <small>LOW</small></span><span>{{ cents(chartMax()) }} <small>HIGH</small></span><span>{{ chartValues().length }} <small>SAMPLES</small></span></div>
+              <svg class="history-chart" viewBox="0 0 800 220" role="img" [attr.aria-label]="'YES ask price over the last 24 hours for ' + selected.ticker">
+                <line x1="20" y1="30" x2="780" y2="30" class="chart-gridline" />
+                <line x1="20" y1="110" x2="780" y2="110" class="chart-gridline" />
+                <line x1="20" y1="190" x2="780" y2="190" class="chart-gridline" />
+                <polyline *ngFor="let segment of chartSegments()" [attr.points]="segment" class="chart-line" />
+                <circle *ngFor="let point of chartPlots()" [attr.cx]="point.x" [attr.cy]="point.y" r="3.5" class="chart-dot" />
+              </svg>
+              <div class="chart-timestamps"><span>{{ chartStart() }}</span><span>{{ chartEnd() }}</span></div>
+            </div>
+          </ng-container>
+          <p class="history-disclaimer">Samples are collected on a fixed schedule. Gaps indicate missing observations; they are not interpolated trades.</p>
+        </section>
+
         <section class="radar-panel">
           <div class="panel-heading">
-            <div><div class="section-kicker">01 / EVENT WINDOW</div><h2>Upcoming games <span class="heading-count">{{ games().length }}</span></h2><p>Open sports contracts associated with games in the next 24 hours.</p></div>
+            <div><div class="section-kicker">02 / EVENT WINDOW</div><h2>Upcoming games <span class="heading-count">{{ games().length }}</span></h2><p>Open sports contracts associated with games in the next 24 hours.</p></div>
             <span class="panel-pill">ROLLING 24H</span>
           </div>
           <ng-container *ngTemplateOutlet="marketsTable; context: { rows: games(), empty: 'No upcoming game markets returned in this scan.' }"></ng-container>
@@ -69,7 +102,7 @@ const REFRESH_MS = 30 * 60 * 1000;
 
         <section class="radar-panel championships-panel">
           <div class="panel-heading">
-            <div><div class="section-kicker">02 / FUTURES DESK</div><h2>Championship watch <span class="heading-count">{{ championships().length }}</span></h2><p>Season-long and title markets are tracked separately from single games.</p></div>
+            <div><div class="section-kicker">03 / FUTURES DESK</div><h2>Championship watch <span class="heading-count">{{ championships().length }}</span></h2><p>Season-long and title markets are tracked separately from single games.</p></div>
             <span class="panel-pill purple">FUTURES</span>
           </div>
           <ng-container *ngTemplateOutlet="marketsTable; context: { rows: championships(), empty: 'No championship markets returned in this scan.' }"></ng-container>
@@ -77,7 +110,7 @@ const REFRESH_MS = 30 * 60 * 1000;
 
         <section class="radar-panel other-panel" *ngIf="others().length">
           <div class="panel-heading">
-            <div><div class="section-kicker">03 / ADDITIONAL COVERAGE</div><h2>Other sports contracts <span class="heading-count">{{ others().length }}</span></h2><p>Sports markets not yet classified as upcoming games or championships.</p></div>
+            <div><div class="section-kicker">04 / ADDITIONAL COVERAGE</div><h2>Other sports contracts <span class="heading-count">{{ others().length }}</span></h2><p>Sports markets not yet classified as upcoming games or championships.</p></div>
           </div>
           <ng-container *ngTemplateOutlet="marketsTable; context: { rows: others(), empty: '' }"></ng-container>
         </section>
@@ -87,7 +120,7 @@ const REFRESH_MS = 30 * 60 * 1000;
         <div *ngIf="!rows.length" class="empty-state">{{ empty }}</div>
         <div class="table-wrap" *ngIf="rows.length">
           <table>
-            <thead><tr><th>SPORT / MARKET</th><th class="numeric">YES BID</th><th class="numeric">YES ASK</th><th class="numeric">CHANGE*</th><th class="numeric">24H VOL.</th><th class="numeric">SPREAD</th></tr></thead>
+            <thead><tr><th>SPORT / MARKET</th><th class="numeric">YES BID</th><th class="numeric">YES ASK</th><th class="numeric">CHANGE*</th><th class="numeric">24H VOL.</th><th class="numeric">SPREAD</th><th>HISTORY</th></tr></thead>
             <tbody>
               <tr *ngFor="let row of rows; trackBy: trackTicker">
                 <td class="market-identity"><div class="identity-top"><span class="sport-chip">{{ row.sport }}</span><span class="market-ticker">{{ row.ticker }}</span></div><div class="market-title">{{ row.title }}</div><div class="event-title">{{ row.eventTitle }}</div></td>
@@ -96,6 +129,7 @@ const REFRESH_MS = 30 * 60 * 1000;
                 <td class="numeric"><span class="movement" [class.positive]="(row.priceChange ?? 0) > 0" [class.negative]="(row.priceChange ?? 0) < 0">{{ changeLabel(row.priceChange) }}</span></td>
                 <td class="numeric">{{ volume(row.volume24h) }}</td>
                 <td class="numeric price-muted">{{ spread(row) }}</td>
+                <td><button class="history-button" type="button" (click)="showHistory(row)" [attr.aria-label]="'View historical prices for ' + row.title">VIEW ↗</button></td>
               </tr>
             </tbody>
           </table>
@@ -114,7 +148,54 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly games = computed(() => this.snapshot()?.markets.filter((m) => m.kind === 'game') ?? []);
   readonly championships = computed(() => this.snapshot()?.markets.filter((m) => m.kind === 'championship') ?? []);
   readonly others = computed(() => this.snapshot()?.markets.filter((m) => m.kind === 'other') ?? []);
+  readonly watch = computed(() => this.snapshot()?.markets.filter((market) =>
+    (market.kind === 'game' || market.kind === 'championship') &&
+    market.yesAsk !== null && market.yesAsk >= 0.55 && market.yesAsk <= 0.65 &&
+    !/\b15[ -]?min(?:ute)?s?\b/i.test(market.title)
+  ) ?? []);
+  readonly selectedMarket = signal<RadarMarket | null>(null);
+  readonly history = signal<RadarHistoryResponse | null>(null);
+  readonly historyLoading = signal(false);
+  readonly historyError = signal<string | null>(null);
+  readonly chartValues = computed(() => this.history()?.points.filter((point) =>
+    point.yesAsk !== null && Number.isFinite(point.yesAsk)
+  ) ?? []);
+  readonly chartMin = computed(() => Math.min(...this.chartValues().map((point) => point.yesAsk!), 1));
+  readonly chartMax = computed(() => Math.max(...this.chartValues().map((point) => point.yesAsk!), 0));
+  readonly chartPlots = computed(() => {
+    const values = this.chartValues();
+    if (values.length < 2) return [];
+    const min = Math.max(0, this.chartMin() - 0.03);
+    const max = Math.min(1, this.chartMax() + 0.03);
+    const span = Math.max(0.01, max - min);
+    const start = Date.parse(values[0].sampledAt);
+    const duration = Math.max(1, Date.parse(values[values.length - 1].sampledAt) - start);
+    return values.map((point) => {
+      const x = 20 + (760 * (Date.parse(point.sampledAt) - start)) / duration;
+      const y = 190 - ((point.yesAsk! - min) / span) * 160;
+      return { x: x.toFixed(1), y: y.toFixed(1), sampledAt: point.sampledAt };
+    });
+  });
+  readonly chartSegments = computed(() => {
+    const segments: string[] = [];
+    let group: string[] = [];
+    let previous = 0;
+    for (const point of this.chartPlots()) {
+      const timestamp = Date.parse(point.sampledAt);
+      if (previous && timestamp - previous > 45 * 60 * 1000) {
+        if (group.length > 1) segments.push(group.join(' '));
+        group = [];
+      }
+      group.push(`${point.x},${point.y}`);
+      previous = timestamp;
+    }
+    if (group.length > 1) segments.push(group.join(' '));
+    return segments;
+  });
+  readonly chartStart = computed(() => this.chartValues().length ? this.historyTime(this.chartValues()[0].sampledAt) : '—');
+  readonly chartEnd = computed(() => this.chartValues().length ? this.historyTime(this.chartValues()[this.chartValues().length - 1].sampledAt) : '—');
   private timer: ReturnType<typeof setInterval> | undefined;
+  private historyRequestId = 0;
 
   ngOnInit(): void {
     void this.refresh();
@@ -123,6 +204,36 @@ export class AppComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     if (this.timer) clearInterval(this.timer);
+    this.historyRequestId++;
+  }
+
+  async showHistory(market: RadarMarket): Promise<void> {
+    const requestId = ++this.historyRequestId;
+    this.selectedMarket.set(market);
+    this.history.set(null);
+    this.historyError.set(null);
+    this.historyLoading.set(true);
+    try {
+      const response = await fetch(`/api/history?ticker=${encodeURIComponent(market.ticker)}`);
+      if (!response.ok) throw new Error(`History API returned HTTP ${response.status}.`);
+      const data: RadarHistoryResponse = await response.json();
+      if (!Array.isArray(data.points)) throw new Error('Unexpected history response.');
+      if (requestId === this.historyRequestId) this.history.set(data);
+    } catch (error) {
+      if (requestId === this.historyRequestId) this.historyError.set(error instanceof Error ? error.message : 'History unavailable.');
+    } finally {
+      if (requestId === this.historyRequestId) this.historyLoading.set(false);
+    }
+  }
+
+  closeHistory(): void {
+    this.historyRequestId++;
+    this.selectedMarket.set(null);
+    this.history.set(null);
+  }
+
+  historyTime(timestamp: string): string {
+    return new Date(timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   }
 
   async refresh(force = false): Promise<void> {
