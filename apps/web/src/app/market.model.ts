@@ -78,6 +78,32 @@ export interface NbaMeeting {
   winnerId: string | null;
 }
 
+export interface NbaEloForecast {
+  homeWinProbability: number;
+  awayWinProbability: number;
+  homeElo: number;
+  awayElo: number;
+}
+
+export interface NbaEloMetadata {
+  name: string;
+  trainedThroughSeason: number;
+  forecastSeason: number;
+  validationSeason: number;
+  validationGames: number;
+  brier: number;
+  baselineBrier: number;
+  logLoss: number;
+  baselineLogLoss: number;
+  baselineHomeProbability: number;
+  trainingGames: number;
+  currentSeasonGames: number;
+  resultsThrough: string | null;
+  calibration: Array<{ bucket: string; games: number; predicted: number | null; observed: number | null }>;
+  available: boolean;
+  message: string;
+}
+
 export interface NbaComparison {
   gameId: string;
   startTime: string;
@@ -99,6 +125,7 @@ export interface NbaComparison {
     awayWins: number;
     partial: boolean;
   };
+  forecast?: NbaEloForecast | null;
 }
 
 export interface NbaComparisonResponse {
@@ -110,4 +137,5 @@ export interface NbaComparisonResponse {
   counts: { eligibleGames: number; returnedGames: number; partialCoverage: boolean };
   warnings: string[];
   notes: string[];
+  model?: NbaEloMetadata;
 }

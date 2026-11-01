@@ -6,6 +6,8 @@
  * are surfaced, never replaced with fabricated estimates.
  */
 
+import { currentEloSnapshot, forecast, modelMetadata, type NbaEloForecast, type NbaEloMetadata } from './nba-model.ts';
+
 const ESPN_SITE = 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba';
 const ESPN_STANDINGS = 'https://site.api.espn.com/apis/v2/sports/basketball/nba/standings';
 const CACHE_SECONDS = 30 * 60;
@@ -95,6 +97,8 @@ export interface NbaComparison {
     awayWins: number;
     partial: boolean;
   };
+  /** Available only before tipoff, after all current-season model inputs load. */
+  forecast?: NbaEloForecast | null;
 }
 export interface NbaComparisonResponse {
   source: 'ESPN public basketball feeds';
@@ -105,6 +109,7 @@ export interface NbaComparisonResponse {
   counts: { eligibleGames: number; returnedGames: number; partialCoverage: boolean };
   warnings: string[];
   notes: string[];
+  model?: NbaEloMetadata;
 }
 
 function num(value: unknown): number | null {
@@ -333,9 +338,9 @@ export async function scanNbaComparisons(now = new Date()): Promise<NbaCompariso
     counts: { eligibleGames: eligible.length, returnedGames: games.length, partialCoverage: warnings.length > 0 },
     warnings,
     notes: [
-      'Comparisons show recorded NBA results and ESPN-reported injuries, not a prediction model.',
+      'Team statistics and reported injuries are descriptive; the separate experimental Elo forecast uses final game scores only.',
       'Head-to-head includes up to five completed regular-season meetings across this and last season.',
-      'Injuries are reports, not verified starting lineups. No Vegas money splits or independent win probabilities are claimed.'
+      'Injuries are reports, not verified starting lineups. Elo probabilities are not verified market edges or Vegas money splits.'
     ]
   };
 }
@@ -350,7 +355,25 @@ export async function handleNbaComparisons(request: Request): Promise<Response> 
     if (cached) return cached;
   }
   try {
-    const result = await scanNbaComparisons();
+    // Ratings are built concurrently with matchup data; an unavailable model
+    // never prevents publication of the underlying sourced comparisons.
+    const [comparisonResult, modelResult] = await Promise.allSettled([
+      scanNbaComparisons(), currentEloSnapshot()
+    ]);
+    if (comparisonResult.status === 'rejected') throw comparisonResult.reason;
+    const result = comparisonResult.value;
+    result.model = modelMetadata();
+    if (modelResult.status === 'fulfilled' && result.season === modelResult.value.metadata.forecastSeason) {
+      result.model = modelResult.value.metadata;
+      for (const game of result.games) {
+        game.forecast = game.status === 'scheduled'
+          ? forecast(game.home.id, game.away.id, modelResult.value.ratings) : null;
+      }
+    } else {
+      result.model.message = 'Pregame projections unavailable; current-season results could not be fully verified.';
+      result.warnings.push('NBA Elo model unavailable; sourced matchup statistics remain visible.');
+    }
+    result.counts.partialCoverage = result.warnings.length > 0;
     const ttl = result.counts.partialCoverage ? 300 : CACHE_SECONDS;
     const response = Response.json(result, {
       headers: { 'Cache-Control': `public, max-age=0, s-maxage=${ttl}`, 'X-Content-Type-Options': 'nosniff' }

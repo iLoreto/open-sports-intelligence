@@ -71,3 +71,34 @@ table.nba-stat-table{min-width:0;width:100%;table-layout:fixed;border-collapse:c
 .nba-injury-entry small{display:block;color:#7899ae;margin:4px 0 7px;line-height:1.5}
 .nba-footnote{border-top:1px solid #243e52;padding:17px 30px 22px;color:#7c96a9;font-size:11px;line-height:1.65}
 @media(max-width:720px){.nba-detail-grid{grid-template-columns:1fr}.nba-matchup{padding:19px}.nba-feed-meta,.nba-warning,.nba-footnote{padding-left:19px;padding-right:19px}.nba-teams{grid-template-columns:minmax(0,1fr) 65px minmax(0,1fr);gap:9px}.nba-team strong{font-size:15px}.nba-versus strong{font-size:17px}.nba-team-record{font-size:10px}.nba-stat-table th,.nba-stat-table td{padding:10px 3px}.nba-stat-table td{font-size:13px}.nba-stat-table th:nth-child(2),.nba-stat-table td:nth-child(2){width:49%;font-size:10px}.nba-matchup-id{display:none}}
+
+/* Validated-but-experimental Elo benchmark, visually distinct from Kalshi quotes. */
+.nba-model-overview{display:flex;justify-content:space-between;align-items:center;gap:22px;margin:0 30px 0;padding:20px 0;border-top:1px solid #30465b}
+.nba-model-copy{max-width:660px}
+.nba-model-copy strong{font-family:'Space Grotesk',sans-serif;color:#c5dbf4;font-size:16px}
+.nba-model-copy strong span{font:800 9px 'DM Sans',sans-serif;letter-spacing:1px;color:#e8c58c;border:1px solid #927041;border-radius:4px;padding:4px 6px;margin-left:8px;vertical-align:2px}
+.nba-model-copy p{font-size:11px;color:#819caf;line-height:1.7;margin:8px 0 0}
+.nba-model-metrics{display:flex;gap:14px;flex:none}
+.nba-model-metrics>div{background:#13293a;border:1px solid #365267;border-radius:8px;min-width:112px;padding:12px}
+.nba-model-metrics span{display:block;color:#84a7bd;font-size:9px;font-weight:800;letter-spacing:.5px}
+.nba-model-metrics strong{display:block;margin-top:5px;font:600 21px 'Space Grotesk',sans-serif;color:#d3eaf7}
+.nba-model-status{font-size:11px;color:#86a5b8;padding:8px 30px 15px;line-height:1.6}
+.nba-model-status span{color:#7ecbb5}
+.nba-calibration{margin:0 30px 18px;border:1px solid #29465e;border-radius:7px;overflow:hidden}
+.nba-calibration summary{cursor:pointer;padding:13px 15px;font-weight:800;font-size:10px;letter-spacing:1px;color:#95bdd7;background:#15283a}
+.nba-calibration table{width:100%;min-width:0}
+.nba-calibration th,.nba-calibration td{padding:9px 14px;font-size:10px;text-align:right}
+.nba-calibration th:first-child,.nba-calibration td:first-child{text-align:left}
+.nba-calibration p{font-size:10px;color:#8aa6b8;line-height:1.6;padding:12px 15px;margin:0}
+.nba-forecast{border:1px solid #355975;border-radius:9px;background:linear-gradient(115deg,#132c3c,#102337);padding:15px 18px;margin-bottom:20px}
+.nba-forecast-heading{display:flex;justify-content:space-between;gap:15px;color:#a4c8df;font-size:10px;font-weight:800;letter-spacing:1px}
+.nba-forecast-heading small{color:#759bb6;font-size:9px;font-weight:500;letter-spacing:0}
+.nba-forecast-labels{display:flex;justify-content:space-between;gap:10px;margin-top:14px;color:#8dc8d1;font-size:12px}
+.nba-forecast-labels span:last-child{color:#8fb7f3}
+.nba-forecast-labels strong{font:700 19px 'Space Grotesk',sans-serif;margin-left:8px}
+.nba-probability-track{display:flex;overflow:hidden;height:10px;border-radius:6px;background:#304352;margin-top:9px}
+.nba-prob-away{display:block;background:#63b5bc;min-width:0}
+.nba-prob-home{display:block;background:#718fe0;min-width:0}
+.nba-forecast-note,.nba-forecast-missing{font-size:10px;color:#8ba9bf;margin:11px 0 0;line-height:1.6}
+.nba-forecast-missing{padding:10px 0 18px;border-top:1px solid #294258}
+@media(max-width:760px){.nba-model-overview{margin:0 19px;flex-direction:column;align-items:stretch;gap:14px}.nba-model-metrics>div{flex:1}.nba-model-status{padding:8px 19px 14px}.nba-calibration{margin:0 19px 15px}.nba-calibration th,.nba-calibration td{padding:8px 5px;font-size:9px}.nba-forecast{padding:14px}.nba-forecast-heading{flex-direction:column;gap:4px}.nba-forecast-labels strong{font-size:16px}}
