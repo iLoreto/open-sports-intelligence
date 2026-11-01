@@ -47,3 +47,67 @@ export interface RadarHistoryResponse {
   points: RadarHistoryPoint[];
   message?: string;
 }
+
+export interface NbaTeamStats {
+  id: string;
+  name: string;
+  abbreviation: string;
+  record: string | null;
+  lastTen: string | null;
+  homeRecord: string | null;
+  awayRecord: string | null;
+  pointsFor: number | null;
+  pointsAgainst: number | null;
+  differential: number | null;
+  streak: string | null;
+}
+
+export interface NbaInjury {
+  name: string;
+  status: string;
+  note: string | null;
+  updatedAt: string | null;
+}
+
+export interface NbaMeeting {
+  date: string;
+  homeId: string;
+  awayId: string;
+  homeScore: number;
+  awayScore: number;
+  winnerId: string | null;
+}
+
+export interface NbaComparison {
+  gameId: string;
+  startTime: string;
+  status: 'scheduled' | 'live' | 'final';
+  statusDetail: string;
+  home: NbaTeamStats;
+  away: NbaTeamStats;
+  homeScore: number | null;
+  awayScore: number | null;
+  injuries: {
+    home: NbaInjury[];
+    away: NbaInjury[];
+    reportedAt: string | null;
+    available: boolean;
+  };
+  headToHead: {
+    meetings: NbaMeeting[];
+    homeWins: number;
+    awayWins: number;
+    partial: boolean;
+  };
+}
+
+export interface NbaComparisonResponse {
+  source: 'ESPN public basketball feeds';
+  fetchedAt: string;
+  season: number;
+  window: { startsOn: string; endsBefore: string; timeZone: 'America/Los_Angeles' };
+  games: NbaComparison[];
+  counts: { eligibleGames: number; returnedGames: number; partialCoverage: boolean };
+  warnings: string[];
+  notes: string[];
+}

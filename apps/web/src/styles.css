@@ -23,3 +23,51 @@
 .chart-dot{fill:#e5fff5;stroke:#4dbd9b;stroke-width:1.5}
 .chart-timestamps{display:flex;justify-content:space-between;color:#7892a5;font-size:10px}
 @media(max-width:520px){.history-panel{padding:18px}.history-heading h2{font-size:17px}.chart-stats{gap:14px;font-size:18px;flex-wrap:wrap}.chart-stats span{gap:5px}.chart-stats small{font-size:8px}}
+
+/* NBA comparison desk: self-contained so basketball research remains separate from market quotes. */
+.nba-panel{border-color:#325069;background:linear-gradient(150deg,#101c2b,#0d1622 38%)}
+.nba-panel .section-kicker{color:#7bbdf7}
+.nba-pill{color:#9acbff;border-color:#3b6381}
+.nba-feed-meta{border-top:1px solid #23394b;padding:14px 30px;color:#7f9eb9;font-size:10px;letter-spacing:.3px}
+.nba-state{margin:0;padding:28px;color:#9db6ca;font-size:13px;border-top:1px solid #23394b}
+.nba-warning{border-top:1px solid #5c4830;background:#30261b;color:#f1c894;padding:13px 30px;font-size:12px;line-height:1.6}
+.nba-matchup{border-top:1px solid #30465c;padding:24px 30px 28px}
+.nba-matchup:nth-of-type(even){background:rgba(28,44,65,.18)}
+.nba-matchup-top{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:20px}
+.nba-matchup-date{display:flex;align-items:center;gap:12px;color:#819eb6;font-size:11px}
+.nba-status{padding:5px 8px;background:#203348;color:#a5c8e7;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:.5px}
+.nba-status.in-progress{background:#16402f;color:#85e8bd}
+.nba-matchup-id{color:#526e83;font-size:10px}
+.nba-teams{display:grid;grid-template-columns:minmax(0,1fr) 85px minmax(0,1fr);align-items:center;gap:20px;padding-bottom:20px}
+.nba-team{display:flex;flex-direction:column;gap:7px;min-width:0}
+.nba-team:last-child{text-align:right}
+.nba-team strong{font-family:'Space Grotesk',sans-serif;color:#e7eff8;font-size:19px;letter-spacing:-.3px;line-height:1.2}
+.nba-location{font-size:9px;letter-spacing:1.7px;color:#6f92ae;font-weight:800}
+.nba-team-record{font-size:11px;color:#a0b8c9}
+.nba-versus{text-align:center;color:#9dbecf;display:flex;flex-direction:column;gap:5px}
+.nba-versus strong{font-family:'Space Grotesk',sans-serif;font-size:22px;white-space:nowrap}
+.nba-versus small{font-size:9px;letter-spacing:1.5px;color:#668aa8}
+.nba-stat-section-label{font-size:9px;letter-spacing:1.3px;font-weight:800;color:#8baac1;padding:14px 0 10px;border-top:1px solid #23394e}
+table.nba-stat-table{min-width:0;width:100%;table-layout:fixed;border-collapse:collapse}
+.nba-stat-table th,.nba-stat-table td{text-align:center;padding:10px 12px;border-color:#263a4d}
+.nba-stat-table th{border-top:0;color:#95b7d1;background:#122335;font-size:10px}
+.nba-stat-table th:nth-child(2),.nba-stat-table td:nth-child(2){width:48%;font-family:'DM Sans',sans-serif;color:#7c9ab1;font-size:11px;font-weight:500}
+.nba-stat-table td{font-variant-numeric:tabular-nums;color:#d5edf4;font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:600}
+.nba-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:13px;margin-top:19px}
+.nba-detail{border:1px solid #2a455a;border-radius:8px;background:#111f2e;padding:0 14px;min-width:0}
+.nba-detail summary{display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer;font-size:10px;font-weight:800;letter-spacing:.7px;color:#a6c4d8;line-height:1.4;padding:15px 2px;list-style:none}
+.nba-detail summary::-webkit-details-marker{display:none}
+.nba-detail summary::before{content:'+';font-size:17px;color:#6db5cf;margin-right:4px}
+.nba-detail[open] summary::before{content:'−'}
+.nba-detail summary span{font-size:10px;letter-spacing:0;color:#7dbbdb;text-align:right;white-space:nowrap}
+.nba-detail p,.nba-detail li{font-size:11px;line-height:1.65;color:#9ab0c1}
+.nba-detail ul{padding-left:16px;margin:0 0 15px}
+.nba-detail li{margin:7px 0}
+.nba-detail .nba-data-note{font-size:10px;color:#829eb2;margin:8px 0 14px}
+.nba-injury-team{display:flex;flex-direction:column;gap:7px;border-top:1px solid #284054;padding:12px 0;color:#8ca7b8;font-size:11px}
+.nba-injury-team strong{color:#b2d4ec;font-size:10px;letter-spacing:1px}
+.nba-injury-entry{line-height:1.5}
+.nba-injury-entry b{color:#c9dce8}
+.nba-injury-entry small{display:block;color:#7899ae;margin:4px 0 7px;line-height:1.5}
+.nba-footnote{border-top:1px solid #243e52;padding:17px 30px 22px;color:#7c96a9;font-size:11px;line-height:1.65}
+@media(max-width:720px){.nba-detail-grid{grid-template-columns:1fr}.nba-matchup{padding:19px}.nba-feed-meta,.nba-warning,.nba-footnote{padding-left:19px;padding-right:19px}.nba-teams{grid-template-columns:minmax(0,1fr) 65px minmax(0,1fr);gap:9px}.nba-team strong{font-size:15px}.nba-versus strong{font-size:17px}.nba-team-record{font-size:10px}.nba-stat-table th,.nba-stat-table td{padding:10px 3px}.nba-stat-table td{font-size:13px}.nba-stat-table th:nth-child(2),.nba-stat-table td:nth-child(2){width:49%;font-size:10px}.nba-matchup-id{display:none}}

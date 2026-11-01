@@ -5,7 +5,8 @@
   "scripts": {
     "start": "ng serve",
     "build": "ng build",
-    "typecheck:worker": "tsc --ignoreConfig --noEmit --target ES2022 --module ESNext --moduleResolution Bundler --lib ES2022,DOM --skipLibCheck worker/index.ts worker/markets.ts worker/persistence.ts",
+    "typecheck:worker": "tsc --ignoreConfig --noEmit --target ES2022 --module ESNext --moduleResolution Bundler --lib ES2022,DOM --skipLibCheck worker/index.ts worker/markets.ts worker/persistence.ts worker/nba.ts",
+    "test:nba": "node --test worker/nba.test.mjs",
     "preview": "npm run build && wrangler dev",
     "deploy": "npm run build && wrangler deploy"
   },
