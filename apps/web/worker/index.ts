@@ -1,5 +1,6 @@
 import { handleHealth } from './health';
 import { handleMarkets, scanMarkets } from './markets';
+import { handleNbaComparisons } from './nba';
 import { historyResponse, persistSnapshot, type RadarDatabase } from './persistence';
 
 interface Environment {
@@ -20,6 +21,11 @@ export default {
     if (path === '/api/history') {
       if (request.method !== 'GET') return new Response('Method not allowed', { status: 405 });
       return historyResponse(request, env.RADAR_DB);
+    }
+
+    if (path === '/api/nba/comparisons') {
+      if (request.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+      return handleNbaComparisons(request);
     }
 
     if (path === '/api/health') {

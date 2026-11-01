@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnDestroy, OnInit, computed, signal } from '@angular/core';
-import type { RadarHistoryResponse, RadarMarket, RadarResponse } from './market.model';
+import type { NbaComparison, NbaComparisonResponse, RadarHistoryResponse, RadarMarket, RadarResponse } from './market.model';
 
 const REFRESH_MS = 30 * 60 * 1000;
 
@@ -26,16 +26,79 @@ const REFRESH_MS = 30 * 60 * 1000;
 
     <main class="container">
       <section class="hero">
-        <div class="eyebrow"><span class="eyebrow-line"></span> THE INTELLIGENCE TERMINAL <span class="version-tag">V0.1 / MARKET DATA</span></div>
+        <div class="eyebrow"><span class="eyebrow-line"></span> THE INTELLIGENCE TERMINAL <span class="version-tag">V0.2 / NBA COMPARISON</span></div>
         <h1>See the market.<br><span>Question the price.</span></h1>
-        <p class="hero-copy">An open, independent view of sports prediction markets. Track the actual quoted prices, movement and liquidity before making your own assessment.</p>
+        <p class="hero-copy">Compare NBA teams using recorded results and reported injuries. Then inspect public market quotes as a separate source—without invented win probabilities.</p>
         <div class="hero-actions">
           <span class="source-state"><span class="source-pulse"></span> {{ loading() ? 'SCANNING PUBLIC FEED' : error() ? 'FEED UNAVAILABLE' : 'KALSHI FEED CONNECTED' }}</span>
-          <button class="refresh-button" type="button" (click)="refresh(true)" [disabled]="loading()" [attr.aria-busy]="loading()">
+          <button class="refresh-button" type="button" (click)="refresh(true)" [disabled]="loading() || nbaLoading()" [attr.aria-busy]="loading() || nbaLoading()">
             <span aria-hidden="true" class="refresh-icon" [class.spinning]="loading()">↻</span>
-            {{ loading() ? 'SCANNING' : 'REFRESH DATA' }}
+            {{ loading() || nbaLoading() ? 'SCANNING' : 'REFRESH DATA' }}
           </button>
         </div>
+      </section>
+
+      <section class="radar-panel nba-panel" aria-label="NBA matchup comparisons">
+        <div class="panel-heading">
+          <div>
+            <div class="section-kicker">NBA / MATCHUP RESEARCH</div>
+            <h2>Side-by-side comparisons <span class="heading-count">{{ nba()?.games?.length ?? '—' }}</span></h2>
+            <p>Season form, recent meetings and reported injuries for today's and upcoming games. Descriptive stats only.</p>
+          </div>
+          <span class="panel-pill nba-pill">2026–27 SEASON</span>
+        </div>
+        <p *ngIf="nbaLoading() && !nba()" class="nba-state">Loading NBA schedules, standings and injury reports…</p>
+        <div *ngIf="nbaError()" class="nba-warning" role="alert">NBA feed: {{ nbaError() }}<span *ngIf="nba()"> Previously loaded comparisons are shown below; check the update time.</span></div>
+        <ng-container *ngIf="nba() as data">
+          <div class="nba-feed-meta">ESPN public basketball feeds · Last fetched {{ dateTime(data.fetchedAt) }} · {{ data.season - 1 }}–{{ data.season.toString().slice(-2) }} season</div>
+          <div *ngFor="let warning of data.warnings" class="nba-warning">{{ warning }}</div>
+          <div *ngIf="!data.games.length" class="empty-state">No regular-season NBA games were found in the current 24-hour window.</div>
+
+          <div class="nba-matchup" *ngFor="let game of data.games; trackBy: trackGame">
+            <div class="nba-matchup-top">
+              <div class="nba-matchup-date"><span class="nba-status" [class.in-progress]="game.status === 'live'">{{ game.statusDetail }}</span><span>{{ dateTime(game.startTime) }}</span></div>
+              <span class="nba-matchup-id">ESPN #{{ game.gameId }}</span>
+            </div>
+            <div class="nba-teams">
+              <div class="nba-team"><span class="nba-location">AWAY</span><strong>{{ game.away.name }}</strong><span class="nba-team-record">{{ game.away.record ?? 'Record unavailable' }}</span></div>
+              <div class="nba-versus"><strong *ngIf="game.status === 'scheduled'">VS</strong><strong *ngIf="game.status !== 'scheduled'">{{ game.awayScore ?? '—' }} : {{ game.homeScore ?? '—' }}</strong><small>{{ game.status === 'scheduled' ? 'MATCHUP' : game.status | uppercase }}</small></div>
+              <div class="nba-team"><span class="nba-location">HOME</span><strong>{{ game.home.name }}</strong><span class="nba-team-record">{{ game.home.record ?? 'Record unavailable' }}</span></div>
+            </div>
+
+            <div class="nba-stat-section-label">SEASON PERFORMANCE · {{ game.away.abbreviation }} / {{ game.home.abbreviation }}</div>
+            <table class="nba-stat-table" [attr.aria-label]="game.away.name + ' versus ' + game.home.name + ' season statistics'">
+              <thead><tr><th>{{ game.away.abbreviation }}</th><th>METRIC</th><th>{{ game.home.abbreviation }}</th></tr></thead>
+              <tbody>
+                <tr><td>{{ game.away.lastTen ?? '—' }}</td><td>Last 10 games</td><td>{{ game.home.lastTen ?? '—' }}</td></tr>
+                <tr><td>{{ game.away.awayRecord ?? '—' }}</td><td>Away / home record</td><td>{{ game.home.homeRecord ?? '—' }}</td></tr>
+                <tr><td>{{ points(game.away.pointsFor) }}</td><td>Points scored / game</td><td>{{ points(game.home.pointsFor) }}</td></tr>
+                <tr><td>{{ points(game.away.pointsAgainst) }}</td><td>Points allowed / game</td><td>{{ points(game.home.pointsAgainst) }}</td></tr>
+                <tr><td>{{ points(game.away.differential, true) }}</td><td>Point differential</td><td>{{ points(game.home.differential, true) }}</td></tr>
+                <tr><td>{{ game.away.streak ?? '—' }}</td><td>Current streak</td><td>{{ game.home.streak ?? '—' }}</td></tr>
+              </tbody>
+            </table>
+
+            <div class="nba-detail-grid">
+              <details class="nba-detail" [attr.aria-label]="'Head-to-head history for ' + game.away.name + ' and ' + game.home.name">
+                <summary>RECENT HEAD-TO-HEAD <span>{{ game.away.abbreviation }} {{ game.headToHead.awayWins }}–{{ game.headToHead.homeWins }} {{ game.home.abbreviation }}</span></summary>
+                <p *ngIf="!game.headToHead.meetings.length">No recent completed regular-season meetings were returned.</p>
+                <ul *ngIf="game.headToHead.meetings.length">
+                  <li *ngFor="let meeting of game.headToHead.meetings">{{ shortDate(meeting.date) }} · {{ meeting.homeId === game.home.id ? game.home.abbreviation : game.away.abbreviation }} {{ meeting.homeScore }} – {{ meeting.awayId === game.away.id ? game.away.abbreviation : game.home.abbreviation }} {{ meeting.awayScore }}</li>
+                </ul>
+                <p *ngIf="game.headToHead.partial" class="nba-data-note">Some schedule sources failed. Record may be incomplete.</p>
+                <p class="nba-data-note">Up to five completed meetings from this and the prior regular season.</p>
+              </details>
+              <details class="nba-detail" [attr.aria-label]="'Injury reports for ' + game.away.name + ' and ' + game.home.name">
+                <summary>REPORTED INJURIES <span>{{ game.injuries.away.length + game.injuries.home.length }} listed</span></summary>
+                <p *ngIf="!game.injuries.available" class="nba-data-note">Some injury feeds or team reports are unavailable. An empty list is not proof of a healthy roster.</p>
+                <div class="nba-injury-team"><strong>{{ game.away.abbreviation }}</strong><span *ngIf="!game.injuries.away.length">No entries returned</span><div *ngFor="let injury of game.injuries.away" class="nba-injury-entry"><b>{{ injury.name }}</b> · {{ injury.status }}<small *ngIf="injury.note">{{ injury.note }}</small></div></div>
+                <div class="nba-injury-team"><strong>{{ game.home.abbreviation }}</strong><span *ngIf="!game.injuries.home.length">No entries returned</span><div *ngFor="let injury of game.injuries.home" class="nba-injury-entry"><b>{{ injury.name }}</b> · {{ injury.status }}<small *ngIf="injury.note">{{ injury.note }}</small></div></div>
+                <p class="nba-data-note" *ngIf="game.injuries.reportedAt">Report snapshot: {{ dateTime(game.injuries.reportedAt) }}. Not a confirmed starting lineup.</p>
+              </details>
+            </div>
+          </div>
+          <div class="nba-footnote">ESPN-reported statistics and injury reports may lag official updates. No starting lineup, market-implied probability, or independently modeled win chance is claimed. ESPN's public JSON feeds are subject to change.</div>
+        </ng-container>
       </section>
 
       <section class="stat-strip" aria-label="Radar overview">
@@ -136,12 +199,15 @@ const REFRESH_MS = 30 * 60 * 1000;
         </div>
       </ng-template>
 
-      <footer class="footer"><div><strong>OPEN SPORTS INTELLIGENCE</strong><span>Independent by design. Transparent by default.</span></div><div>Source: Kalshi public API · Market data may be delayed · No model forecasts published yet.</div></footer>
+      <footer class="footer"><div><strong>OPEN SPORTS INTELLIGENCE</strong><span>Independent by design. Transparent by default.</span></div><div>Sources: ESPN public basketball feeds + Kalshi public markets · Data may be delayed · No model forecasts or orders.</div></footer>
     </main>
   </div>
   `
 })
 export class AppComponent implements OnInit, OnDestroy {
+  readonly nba = signal<NbaComparisonResponse | null>(null);
+  readonly nbaLoading = signal(false);
+  readonly nbaError = signal<string | null>(null);
   readonly snapshot = signal<RadarResponse | null>(null);
   readonly loading = signal(false);
   readonly error = signal<string | null>(null);
@@ -196,6 +262,7 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly chartEnd = computed(() => this.chartValues().length ? this.historyTime(this.chartValues()[this.chartValues().length - 1].sampledAt) : '—');
   private timer: ReturnType<typeof setInterval> | undefined;
   private historyRequestId = 0;
+  private nbaRequestId = 0;
 
   ngOnInit(): void {
     void this.refresh();
@@ -205,6 +272,7 @@ export class AppComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     if (this.timer) clearInterval(this.timer);
     this.historyRequestId++;
+    this.nbaRequestId++;
   }
 
   async showHistory(market: RadarMarket): Promise<void> {
@@ -237,6 +305,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   async refresh(force = false): Promise<void> {
+    void this.refreshNba(force);
     if (this.loading()) return;
     this.loading.set(true);
     this.error.set(null);
@@ -253,6 +322,46 @@ export class AppComponent implements OnInit, OnDestroy {
       this.loading.set(false);
     }
   }
+
+  async refreshNba(force = false): Promise<void> {
+    if (this.nbaLoading()) return;
+    const requestId = ++this.nbaRequestId;
+    this.nbaLoading.set(true);
+    this.nbaError.set(null);
+    try {
+      const response = await fetch(force ? '/api/nba/comparisons?fresh=1' : '/api/nba/comparisons', { cache: 'no-store' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}; retry later.`);
+      const data: NbaComparisonResponse = await response.json();
+      if (!Array.isArray(data?.games) || !data.fetchedAt) throw new Error('Unexpected NBA comparison response.');
+      if (requestId === this.nbaRequestId) this.nba.set(data);
+    } catch (error) {
+      if (requestId === this.nbaRequestId) this.nbaError.set(error instanceof Error ? error.message : 'NBA feed unavailable.');
+    } finally {
+      if (requestId === this.nbaRequestId) this.nbaLoading.set(false);
+    }
+  }
+
+  points(value: number | null, signed = false): string {
+    if (value === null || !Number.isFinite(value)) return '—';
+    const rounded = value.toFixed(1);
+    return signed && value > 0 ? `+${rounded}` : rounded;
+  }
+
+  dateTime(timestamp: string): string {
+    const date = new Date(timestamp);
+    return Number.isFinite(date.getTime()) ? date.toLocaleString('en-US', {
+      timeZone: 'America/Los_Angeles', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short'
+    }) : 'Time unavailable';
+  }
+
+  shortDate(timestamp: string): string {
+    const date = new Date(timestamp);
+    return Number.isFinite(date.getTime()) ? date.toLocaleDateString('en-US', {
+      month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/Los_Angeles'
+    }) : 'Date unavailable';
+  }
+
+  trackGame(_: number, game: NbaComparison): string { return game.gameId; }
 
   timeLabel(): string {
     const timestamp = this.snapshot()?.scannedAt;
