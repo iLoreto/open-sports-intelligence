@@ -3,6 +3,7 @@ import { Component, OnDestroy, OnInit, computed, signal } from '@angular/core';
 import type { NbaComparison, NbaComparisonResponse, NbaEvResponse, RadarHistoryResponse, RadarMarket, RadarResponse, SportsCatalogResponse } from './market.model';
 
 const REFRESH_MS = 30 * 60 * 1000;
+const DEFAULT_LIST_SIZE = 8;
 
 @Component({
   selector: 'osi-root',
@@ -26,18 +27,25 @@ const REFRESH_MS = 30 * 60 * 1000;
 
     <main class="container">
       <section class="hero">
-        <div class="eyebrow"><span class="eyebrow-line"></span> THE INTELLIGENCE TERMINAL <span class="version-tag">V0.5 / NBA EV LAB</span></div>
-        <h1>See the market.<br><span>Question the price.</span></h1>
-        <p class="hero-copy">Explore public Sports contracts at every quoted price. Compare exact NBA winner quotes against our historically tested Elo estimates, with transparent fee assumptions and data-quality checks.</p>
+        <div class="eyebrow"><span class="eyebrow-line"></span> OPEN SPORTS INTELLIGENCE <span class="version-tag">V0.6 / FOCUSED RADAR</span></div>
+        <h1>Find the <span>price gap.</span></h1>
+        <p class="hero-copy">Kalshi prices and NBA model comparisons at a glance. Start with the strongest estimated gaps, then open matchup research or the full market catalog when you need it.</p>
         <div class="hero-actions">
-          <span class="source-state"><span class="source-pulse"></span> {{ loading() ? 'SCANNING PUBLIC FEED' : error() ? 'FEED UNAVAILABLE' : 'KALSHI FEED CONNECTED' }}</span>
-          <button class="refresh-button" type="button" (click)="refresh(true)" [disabled]="loading() || nbaLoading()" [attr.aria-busy]="loading() || nbaLoading()">
+          <span class="source-state"><span class="source-pulse"></span> {{ loading() ? 'SCANNING PUBLIC FEED' : error() ? 'KALSHI FEED UNAVAILABLE' : 'KALSHI PUBLIC FEED' }}</span>
+          <button class="refresh-button" type="button" (click)="refresh(true)" [disabled]="loading() || nbaLoading() || evLoading()" [attr.aria-busy]="loading() || nbaLoading() || evLoading()">
             <span aria-hidden="true" class="refresh-icon" [class.spinning]="loading()">↻</span>
             {{ loading() || nbaLoading() ? 'SCANNING' : 'REFRESH DATA' }}
           </button>
         </div>
       </section>
 
+      <nav class="workspace-tabs" aria-label="Dashboard views" role="tablist">
+        <button type="button" role="tab" id="tab-scanner" aria-controls="panel-scanner" [attr.aria-selected]="activeView() === 'scanner'" [class.active]="activeView() === 'scanner'" (click)="setView('scanner')"><span>OPPORTUNITIES</span><small>Kalshi model EV</small></button>
+        <button type="button" role="tab" id="tab-research" aria-controls="panel-research" [attr.aria-selected]="activeView() === 'research'" [class.active]="activeView() === 'research'" (click)="setView('research')"><span>NBA RESEARCH</span><small>Matchups & injuries</small></button>
+        <button type="button" role="tab" id="tab-explorer" aria-controls="panel-explorer" [attr.aria-selected]="activeView() === 'explorer'" [class.active]="activeView() === 'explorer'" (click)="setView('explorer')"><span>MARKET EXPLORER</span><small>All indexed Sports</small></button>
+      </nav>
+
+      <div *ngIf="activeView() === 'research'" id="panel-research" role="tabpanel" aria-labelledby="tab-research">
       <section class="radar-panel nba-panel" aria-label="NBA matchup comparisons">
         <div class="panel-heading">
           <div>
@@ -45,7 +53,7 @@ const REFRESH_MS = 30 * 60 * 1000;
             <h2>Side-by-side comparisons <span class="heading-count">{{ nba()?.games?.length ?? '—' }}</span></h2>
             <p>Season form, recent meetings, reported injuries and experimental pregame Elo estimates.</p>
           </div>
-          <div class="nba-panel-actions"><a class="catalog-nba-shortcut" href="#sports-catalog" (click)="selectCatalogSport('NBA')">VIEW NBA MARKETS ↗</a><span class="panel-pill nba-pill">2026–27 SEASON</span></div>
+          <div class="nba-panel-actions"><button class="catalog-nba-shortcut" type="button" (click)="openNbaMarkets()">VIEW NBA MARKETS ↗</button><span class="panel-pill nba-pill">2026–27 SEASON</span></div>
         </div>
         <p *ngIf="nbaLoading() && !nba()" class="nba-state">Loading NBA schedules, standings and injury reports…</p>
         <div *ngIf="nbaError()" class="nba-warning" role="alert">NBA feed: {{ nbaError() }}<span *ngIf="nba()"> Previously loaded comparisons are shown below; check the update time.</span></div>
@@ -70,7 +78,7 @@ const REFRESH_MS = 30 * 60 * 1000;
           </ng-container>
           <div *ngIf="!data.games.length" class="empty-state">No regular-season NBA games were found in the current 24-hour window.</div>
 
-          <div class="nba-matchup" *ngFor="let game of data.games; trackBy: trackGame">
+          <div class="nba-matchup" *ngFor="let game of visibleNbaGames(); trackBy: trackGame">
             <div class="nba-matchup-top">
               <div class="nba-matchup-date"><span class="nba-status" [class.in-progress]="game.status === 'live'">{{ game.statusDetail }}</span><span>{{ dateTime(game.startTime) }}</span></div>
               <span class="nba-matchup-id">ESPN #{{ game.gameId }}</span>
@@ -91,6 +99,8 @@ const REFRESH_MS = 30 * 60 * 1000;
             </div>
             <p *ngIf="game.status === 'scheduled' && !game.forecast" class="nba-forecast-missing">Pregame model unavailable; verified team statistics remain available.</p>
 
+            <details class="matchup-deep-dive">
+              <summary>SEASON STATS, HEAD-TO-HEAD &amp; INJURY REPORTS <span>EXPAND DETAILS ↓</span></summary>
             <div class="nba-stat-section-label">SEASON PERFORMANCE · {{ game.away.abbreviation }} / {{ game.home.abbreviation }}</div>
             <table class="nba-stat-table" [attr.aria-label]="game.away.name + ' versus ' + game.home.name + ' season statistics'">
               <thead><tr><th>{{ game.away.abbreviation }}</th><th>METRIC</th><th>{{ game.home.abbreviation }}</th></tr></thead>
@@ -122,68 +132,58 @@ const REFRESH_MS = 30 * 60 * 1000;
                 <p class="nba-data-note" *ngIf="game.injuries.reportedAt">Report snapshot: {{ dateTime(game.injuries.reportedAt) }}. Not a confirmed starting lineup.</p>
               </details>
             </div>
+            </details>
           </div>
+          <div class="list-progress" *ngIf="data.games.length > visibleNbaGames().length"><span>Showing {{ visibleNbaGames().length }} of {{ data.games.length }} matchups</span><button type="button" class="history-button" (click)="showMoreNba()">SHOW MORE MATCHUPS ↓</button></div>
           <div class="nba-footnote">ESPN-reported statistics and injuries may lag official updates. Elo provides an independent *experimental* estimate; it is not a calibrated sportsbook line, verified lineup forecast or demonstrated betting edge. ESPN's public JSON feeds are subject to change.</div>
         </ng-container>
       </section>
+      </div>
 
-      <section class="radar-panel ev-panel" aria-label="NBA model versus market value comparison">
+      <section class="radar-panel ev-panel" *ngIf="activeView() === 'scanner'" id="panel-scanner" role="tabpanel" aria-labelledby="tab-scanner" aria-label="NBA model versus Kalshi value comparison">
         <div class="panel-heading">
           <div>
-            <div class="section-kicker">NBA / EXPERIMENTAL EV LAB</div>
-            <h2>Model vs. market <span class="heading-count">{{ ev()?.counts?.comparedOffers ?? '—' }} comparisons</span></h2>
-            <p>Exact NBA game-winner contracts only · Next seven days · Live Kalshi asks vs independent Elo forecasts.</p>
+            <div class="section-kicker">KALSHI / NBA MODEL EV</div>
+            <h2>Opportunity watch <span class="heading-count">{{ evPositiveCount() }} positive estimates</span></h2>
+            <p>Upcoming NBA winners · Kalshi ask compared with Elo · Sorted by estimated model EV.</p>
           </div>
-          <span class="panel-pill ev-pill">MODEL-BASED · NOT VERIFIED EDGE</span>
+          <span class="panel-pill ev-pill">KALSHI ONLY · MODEL-BASED</span>
         </div>
         <p class="nba-state" *ngIf="evLoading() && !ev()">Checking upcoming NBA games, live prices and series fees…</p>
         <p *ngIf="evError()" class="nba-warning" role="alert">NBA EV desk: {{ evError() }}</p>
         <ng-container *ngIf="ev() as data">
           <div class="ev-summary">
-            <div><span>EXACT GAME MATCHES</span><strong>{{ data.counts.matchedGames }} <small>/ {{ data.counts.scheduledGames }} upcoming</small></strong></div>
-            <div><span>POSITIVE MODEL ESTIMATES</span><strong>{{ evPositiveCount() }}</strong></div>
-            <div><span>VALIDATION BRIER</span><strong>{{ data.model.validationBrier.toFixed(3) }}</strong></div>
-            <div><span>LIVE QUOTES FETCHED</span><strong class="ev-time">{{ dateTime(data.fetchedAt) }}</strong></div>
+            <div><span>GAME MATCHES</span><strong>{{ data.counts.matchedGames }} <small>/ {{ data.counts.scheduledGames }} upcoming</small></strong></div>
+            <div><span>QUOTES COMPARED</span><strong>{{ data.counts.comparedOffers }}</strong></div>
+            <div><span>LAST QUOTE CHECK</span><strong class="ev-time">{{ dateTime(data.fetchedAt) }}</strong></div>
           </div>
           <div *ngFor="let warning of data.warnings" class="ev-warning">{{ warning }}</div>
           <div *ngIf="!data.model.available" class="ev-warning">Current Elo ratings could not be verified. EV estimates are withheld.</div>
           <div class="ev-toolbar">
-            <label class="ev-toggle"><input type="checkbox" [checked]="evOnlyPositive()" (change)="evOnlyPositive.set($any($event.target).checked)" /> Show positive model estimates only</label>
-            <span>{{ evRows().length }} shown · sorted by illustrative EV</span>
+            <label class="ev-toggle"><input type="checkbox" [checked]="evOnlyPositive()" (change)="setPositiveOnly($any($event.target).checked)" /> Positive estimates only</label>
+            <span>{{ visibleEvRows().length }} of {{ evRows().length }} · highest estimate first</span>
           </div>
-          <div class="table-wrap" *ngIf="evRows().length">
-            <table class="ev-table">
-              <thead><tr><th>NBA GAME / OUTCOME</th><th>EXACT MARKET ROUTE</th><th class="numeric">ELO WIN %</th><th class="numeric">ASK</th><th class="numeric">GROSS GAP</th><th class="numeric">EST. FEE*</th><th class="numeric">MODEL EV*</th><th class="numeric">BREAK-EVEN*</th><th>CONTRACT</th></tr></thead>
-              <tbody>
-                <tr *ngFor="let row of evRows(); trackBy: trackEvOffer">
-                  <td><strong class="ev-team">{{ row.team }}</strong><div class="event-title">{{ row.away }} @ {{ row.home }}</div><div class="event-title">{{ dateTime(row.startTime) }}</div></td>
-                  <td><strong class="ev-route">{{ row.side }} · {{ row.yesMarketTeam }}</strong><div class="market-ticker">{{ row.ticker }}</div></td>
-                  <td class="numeric">{{ percent(row.modelProbability) }}</td>
-                  <td class="numeric main-price">{{ cents(row.ask) }}</td>
-                  <td class="numeric"><span [class.ev-positive]="row.grossEdge > 0" [class.ev-negative]="row.grossEdge <= 0">{{ signedCents(row.grossEdge) }}</span></td>
-                  <td class="numeric price-muted">{{ preciseCents(row.feePerContract) }}</td>
-                  <td class="numeric"><span class="ev-value" [class.ev-positive]="(row.illustrativeNetEv ?? 0) > 0" [class.ev-negative]="(row.illustrativeNetEv ?? 0) <= 0">{{ signedCents(row.illustrativeNetEv) }}</span></td>
-                  <td class="numeric price-muted">{{ row.breakEvenProbability === null ? '—' : percent(row.breakEvenProbability) }}</td>
-                  <td><a class="history-button" [href]="'https://kalshi.com/markets/kxnbagame/event/' + row.eventTicker.toLowerCase()" target="_blank" rel="noopener noreferrer">OPEN ↗</a></td>
-                </tr>
-              </tbody>
-            </table>
+          <div class="ev-opportunities" *ngIf="evRows().length">
+            <article class="ev-card" *ngFor="let row of visibleEvRows(); trackBy: trackEvOffer">
+              <div class="ev-card-event"><span class="ev-card-date">{{ dateTime(row.startTime) }}</span><strong>{{ row.team }}</strong><span>{{ row.away }} @ {{ row.home }}</span><small>KALSHI · {{ row.side }} ON {{ row.yesMarketTeam }}</small></div>
+              <div class="ev-card-numbers"><div><small>ASK</small><strong>{{ cents(row.ask) }}</strong></div><div><small>ELO WIN</small><strong>{{ percent(row.modelProbability) }}</strong></div><div><small>MODEL EV*</small><strong class="ev-value" [class.ev-positive]="(row.illustrativeNetEv ?? 0) > 0" [class.ev-negative]="(row.illustrativeNetEv ?? 0) <= 0">{{ signedCents(row.illustrativeNetEv) }}</strong></div></div>
+              <div class="ev-card-actions"><a class="history-button" [href]="'https://kalshi.com/markets/kxnbagame/event/' + row.eventTicker.toLowerCase()" target="_blank" rel="noopener noreferrer">VIEW MARKET ↗</a><details class="ev-card-extra"><summary>PRICE DETAILS</summary><span>Gross model gap: {{ signedCents(row.grossEdge) }} · Est. fee: {{ preciseCents(row.feePerContract) }} · Break-even: {{ row.breakEvenProbability === null ? '—' : percent(row.breakEvenProbability) }} · {{ row.ticker }}</span></details></div>
+            </article>
           </div>
+          <div class="list-progress" *ngIf="evRows().length > visibleEvRows().length"><span>Showing {{ visibleEvRows().length }} of {{ evRows().length }} comparisons</span><button type="button" class="history-button" (click)="showMoreEv()">SHOW MORE COMPARISONS ↓</button></div>
           <div class="empty-state" *ngIf="!evRows().length">{{ evOnlyPositive() && data.offers.length ? 'No positive illustrative model EV among the matching quotes.' : 'No exact, model-eligible NBA game-winner comparisons are available in this window yet.' }}</div>
-          <details class="ev-unmatched" *ngIf="data.unmatched.length">
-            <summary>UNMATCHED UPCOMING GAMES <span>{{ data.unmatched.length }} withheld</span></summary>
-            <ul><li *ngFor="let game of data.unmatched">{{ game.away }} @ {{ game.home }} · {{ dateTime(game.startTime) }} — {{ game.reason }}</li></ul>
-          </details>
+          <p class="ev-data-note" *ngIf="data.unmatched.length">{{ data.unmatched.length }} upcoming games could not be matched exactly and are excluded. <button type="button" (click)="setView('research')">RESEARCH MATCHUPS →</button></p>
           <p class="catalog-footer">*Illustrative EV per $1-settlement contract = model win probability − quoted ask − estimated standard taker fee per contract (assuming one 100-contract order). Fee is based on Kalshi's live KXNBAGAME series multiplier; actual fills, fees, and availability may differ. A positive estimate is not demonstrated profitability.</p>
         </ng-container>
       </section>
 
+      <div *ngIf="activeView() === 'explorer'" id="panel-explorer" role="tabpanel" aria-labelledby="tab-explorer">
       <section class="radar-panel catalog-panel" id="sports-catalog" aria-label="Full Kalshi Sports catalog">
         <div class="panel-heading">
           <div>
-            <div class="section-kicker">01 / FULL SPORTS BOOK</div>
-            <h2>Every price. Every listed sport. <span class="heading-count">{{ catalog()?.indexedMarkets ?? '—' }} discovered</span></h2>
-            <p>Cursor-based discovery of open standard Sports events, without price bands, league whitelists or a top-market cutoff.</p>
+            <div class="section-kicker">FULL SPORTS CATALOG · KALSHI</div>
+            <h2>Find a market <span class="heading-count">{{ catalog()?.indexedMarkets ?? '—' }} indexed</span></h2>
+            <p>Search all available prices and select the sport and market type that matter to you.</p>
           </div>
           <span class="panel-pill" [class.catalog-building]="!catalog()?.complete">{{ catalog()?.complete ? 'TRAVERSAL COMPLETE' : 'INDEXING / PARTIAL' }}</span>
         </div>
@@ -196,7 +196,7 @@ const REFRESH_MS = 30 * 60 * 1000;
         <p class="catalog-notice" *ngIf="catalogLoading() && !catalog()">Discovering public Sports markets…</p>
         <div class="catalog-controls">
           <label class="catalog-control-label">SEARCH LOADED CONTRACTS
-            <input type="search" [value]="catalogQuery()" (input)="catalogQuery.set($any($event.target).value)" placeholder="Team, title, ticker…" aria-label="Search loaded Sports contracts" />
+            <input type="search" [value]="catalogQuery()" (input)="setCatalogQuery($any($event.target).value)" placeholder="Team, title, ticker…" aria-label="Search loaded Sports contracts" />
           </label>
           <label class="catalog-control-label">SPORT
             <select [value]="catalogSport()" (change)="selectCatalogSport($any($event.target).value)" aria-label="Filter indexed Sports contracts by sport">
@@ -204,38 +204,27 @@ const REFRESH_MS = 30 * 60 * 1000;
               <option *ngFor="let sport of catalogSports()" [value]="sport">{{ sport }}</option>
             </select>
           </label>
-          <div class="catalog-filter-count">{{ catalogFiltered().length }} matching / {{ catalogMarkets().length }} loaded</div>
+          <label class="catalog-control-label">MARKET TYPE
+            <select [value]="catalogKind()" (change)="setCatalogKind($any($event.target).value)" aria-label="Filter contracts by market type">
+              <option value="ALL">ALL TYPES</option><option value="game">GAMES</option><option value="championship">CHAMPIONSHIPS</option><option value="other">OTHER</option>
+            </select>
+          </label>
+          <div class="catalog-filter-count">{{ catalogFiltered().length }} matching</div>
         </div>
-        <ng-container *ngTemplateOutlet="marketsTable; context: { rows: catalogFiltered(), empty: catalogLoading() ? 'Fetching Sports markets…' : catalogEmpty() }"></ng-container>
+        <ng-container *ngTemplateOutlet="marketsTable; context: { rows: visibleCatalog(), empty: catalogLoading() ? 'Fetching Sports markets…' : catalogEmpty() }"></ng-container>
+        <div class="list-progress" *ngIf="catalogFiltered().length > visibleCatalog().length"><span>Showing {{ visibleCatalog().length }} of {{ catalogFiltered().length }} loaded matches</span><button type="button" class="history-button" (click)="showMoreCatalog()">SHOW MORE MARKETS ↓</button></div>
         <div class="catalog-load" *ngIf="catalogCursor() || catalogLoading()">
           <span>Sport selection searches indexed pages; text search applies to results loaded on this screen.</span>
           <button class="refresh-button" type="button" (click)="loadMoreCatalog()" [disabled]="catalogLoading() || !catalogCursor()">{{ catalogLoading() ? 'LOADING…' : 'LOAD MORE CONTRACTS' }}</button>
         </div>
-        <p class="catalog-footer">An indexed traversal takes time and is not a simultaneous order-book snapshot. Quotes may change while the scan runs. This panel does not calculate EV without a matched independent forecast.</p>
+        <p class="catalog-footer">Search and type filters apply to currently loaded results; sport filtering searches the D1 index. This is not a simultaneous live-book snapshot.</p>
       </section>
-
-      <section class="stat-strip" aria-label="Radar overview">
-        <div class="stat-item"><span class="stat-label">SPORTS BOOK INDEX</span><strong>{{ catalog()?.indexedMarkets ?? '—' }}</strong><small>{{ catalog()?.complete ? 'Completed standard-event traversal' : 'Discovered so far' }}</small></div>
-        <div class="stat-item"><span class="stat-label">PAGES TRAVERSED</span><strong>{{ catalog()?.scannedPages ?? '—' }}</strong><small>{{ catalog()?.mode === 'indexed' ? 'Background cursor scan' : 'Live browsing' }}</small></div>
-        <div class="stat-item"><span class="stat-label">DATA UPDATED</span><strong class="time-stat">{{ timeLabel() }}</strong><small>Automatic 30-minute refresh</small></div>
-        <div class="stat-item"><span class="stat-label">MODEL STATUS</span><strong class="model-stat">NBA ELO</strong><small>Historical backtest; no edge claim</small></div>
-      </section>
-
-      <div class="feed-note">
-        <span class="feed-note-icon">i</span>
-        <span><strong>Know what you're seeing.</strong> YES ask is Kalshi's quoted price—not our independent win probability. Movement compares the current last trade with Kalshi's previous-price field, not necessarily 30 minutes ago.</span>
-      </div>
 
       <div *ngIf="error()" class="error-panel" role="alert">
         <strong>Market feed could not be loaded.</strong>
         <span>{{ error() }}</span>
         <small>There are no simulated prices or fabricated results in this dashboard.</small>
       </div>
-
-      <ng-container *ngIf="snapshot() as data">
-        <div *ngIf="data.counts.partialCoverage" class="coverage-note"><span class="coverage-dash"></span> The legacy 30-minute price-history sampler covers selected sports series; the full catalog above is indexed independently.</div>
-
-      </ng-container>
 
       <section class="history-panel" *ngIf="selectedMarket() as selected">
           <div class="history-heading">
@@ -262,65 +251,43 @@ const REFRESH_MS = 30 * 60 * 1000;
           <p class="history-disclaimer">Samples are collected on a fixed schedule. Gaps indicate missing observations; they are not interpolated trades.</p>
       </section>
 
-      <ng-container *ngIf="snapshot() as data">
-        <section class="radar-panel">
-          <div class="panel-heading">
-            <div><div class="section-kicker">02 / SAMPLED EVENT WINDOW</div><h2>Upcoming games <span class="heading-count">{{ games().length }}</span></h2><p>Open sports contracts associated with games in the next 24 hours, from the legacy price-history sample.</p></div>
-            <span class="panel-pill">ROLLING 24H</span>
-          </div>
-          <ng-container *ngTemplateOutlet="marketsTable; context: { rows: games(), empty: 'No upcoming game markets returned in this scan.' }"></ng-container>
-        </section>
-
-        <section class="radar-panel championships-panel">
-          <div class="panel-heading">
-            <div><div class="section-kicker">03 / SAMPLED FUTURES DESK</div><h2>Championship watch <span class="heading-count">{{ championships().length }}</span></h2><p>Season-long and title markets from the legacy price-history sample.</p></div>
-            <span class="panel-pill purple">FUTURES</span>
-          </div>
-          <ng-container *ngTemplateOutlet="marketsTable; context: { rows: championships(), empty: 'No championship markets returned in this scan.' }"></ng-container>
-        </section>
-
-        <section class="radar-panel other-panel" *ngIf="others().length">
-          <div class="panel-heading">
-            <div><div class="section-kicker">04 / ADDITIONAL COVERAGE</div><h2>Other sports contracts <span class="heading-count">{{ others().length }}</span></h2><p>Sports markets not yet classified as upcoming games or championships.</p></div>
-          </div>
-          <ng-container *ngTemplateOutlet="marketsTable; context: { rows: others(), empty: '' }"></ng-container>
-        </section>
-      </ng-container>
+      <details class="archive-section" *ngIf="snapshot() as data">
+        <summary>OLDER SAMPLED GROUPS <span>Hidden by default · {{ games().length + championships().length + others().length }} sampled contracts</span></summary>
+        <p>These are historical 30-minute sampler snapshots, not a full market scan. Showing up to eight per group; use the catalog above for the broader index.</p>
+        <h3>Upcoming games</h3><ng-container *ngTemplateOutlet="marketsTable; context: { rows: games().slice(0, 8), empty: 'No sampled games.' }"></ng-container>
+        <h3>Championships</h3><ng-container *ngTemplateOutlet="marketsTable; context: { rows: championships().slice(0, 8), empty: 'No sampled championships.' }"></ng-container>
+        <h3>Other</h3><ng-container *ngTemplateOutlet="marketsTable; context: { rows: others().slice(0, 8), empty: 'No other sampled markets.' }"></ng-container>
+      </details>
 
       <ng-template #marketsTable let-rows="rows" let-empty="empty">
         <div *ngIf="!rows.length" class="empty-state">{{ empty }}</div>
-        <div class="table-wrap" *ngIf="rows.length">
-          <table>
-            <thead><tr><th>SPORT / MARKET</th><th class="numeric">YES BID</th><th class="numeric">YES ASK</th><th class="numeric">CHANGE*</th><th class="numeric">24H VOL.</th><th class="numeric">SPREAD</th><th>HISTORY</th></tr></thead>
-            <tbody>
-              <tr *ngFor="let row of rows; trackBy: trackTicker">
-                <td class="market-identity"><div class="identity-top"><span class="sport-chip">{{ row.sport }}</span><span class="market-ticker">{{ row.ticker }}</span></div><div class="market-title">{{ row.title }}</div><div class="event-title">{{ row.eventTitle }}</div></td>
-                <td class="numeric price-muted">{{ cents(row.yesBid) }}</td>
-                <td class="numeric main-price">{{ cents(row.yesAsk) }}</td>
-                <td class="numeric"><span class="movement" [class.positive]="(row.priceChange ?? 0) > 0" [class.negative]="(row.priceChange ?? 0) < 0">{{ changeLabel(row.priceChange) }}</span></td>
-                <td class="numeric">{{ volume(row.volume24h) }}</td>
-                <td class="numeric price-muted">{{ spread(row) }}</td>
-                <td><button class="history-button" type="button" (click)="showHistory(row)" [attr.aria-label]="'View historical prices for ' + row.title">VIEW ↗</button></td>
-              </tr>
-            </tbody>
-          </table>
+        <div class="market-cards" *ngIf="rows.length">
+          <article class="market-card" *ngFor="let row of rows; trackBy: trackTicker">
+            <div class="market-card-title"><div class="identity-top"><span class="sport-chip">{{ row.sport }}</span><span class="sport-chip market-kind">{{ row.kind }}</span></div><strong>{{ row.title }}</strong><span>{{ row.eventTitle }}</span><small>{{ row.ticker }}</small></div>
+            <div class="market-card-prices"><div><small>YES ASK</small><strong>{{ cents(row.yesAsk) }}</strong></div><div><small>NO ASK</small><strong>{{ cents(row.noAsk) }}</strong></div><div><small>SPREAD</small><strong>{{ spread(row) }}</strong></div><div><small>24H VOL.</small><strong>{{ volume(row.volume24h) }}</strong></div></div>
+            <button class="history-button" type="button" (click)="showHistory(row)" [attr.aria-label]="'View historical prices for ' + row.title">HISTORY ↗</button>
+          </article>
         </div>
       </ng-template>
+      </div>
 
-      <footer class="footer"><div><strong>OPEN SPORTS INTELLIGENCE</strong><span>Independent by design. Transparent by default.</span></div><div>Sources: ESPN public basketball feeds + Kalshi public markets · Experimental Elo predictions · No verified edge or account integration.</div></footer>
+      <footer class="footer"><div><strong>OPEN SPORTS INTELLIGENCE</strong><span>Find the signal. Inspect the source.</span></div><div>Kalshi public odds only · ESPN NBA data for independent analysis · Experimental Elo comparisons.</div></footer>
     </main>
   </div>
   `
 })
 export class AppComponent implements OnInit, OnDestroy {
+  readonly activeView = signal<'scanner' | 'research' | 'explorer'>('scanner');
   readonly ev = signal<NbaEvResponse | null>(null);
   readonly evLoading = signal(false);
   readonly evError = signal<string | null>(null);
-  readonly evOnlyPositive = signal(false);
+  readonly evOnlyPositive = signal(true);
+  readonly evLimit = signal(DEFAULT_LIST_SIZE);
   readonly evPositiveCount = computed(() => this.ev()?.offers.filter((offer) =>
     offer.illustrativeNetEv !== null && offer.illustrativeNetEv > 0).length ?? 0);
   readonly evRows = computed(() => (this.ev()?.offers ?? []).filter((offer) =>
     !this.evOnlyPositive() || (offer.illustrativeNetEv !== null && offer.illustrativeNetEv > 0)));
+  readonly visibleEvRows = computed(() => this.evRows().slice(0, this.evLimit()));
   readonly catalog = signal<SportsCatalogResponse | null>(null);
   readonly catalogMarkets = signal<RadarMarket[]>([]);
   readonly catalogCursor = signal<string | null>(null);
@@ -328,6 +295,8 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly catalogError = signal<string | null>(null);
   readonly catalogQuery = signal('');
   readonly catalogSport = signal('ALL');
+  readonly catalogKind = signal<'ALL' | 'game' | 'championship' | 'other'>('ALL');
+  readonly catalogLimit = signal(DEFAULT_LIST_SIZE);
   readonly catalogSports = computed(() => [...new Set([
     'NBA', 'WNBA', 'NFL', 'NHL', 'MLB', 'SOCCER', 'UFC', 'F1', 'OTHER SPORTS',
     ...this.catalogMarkets().map((market) => market.sport)
@@ -335,17 +304,22 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly catalogFiltered = computed(() => {
     const query = this.catalogQuery().trim().toLowerCase();
     const sport = this.catalogSport();
+    const kind = this.catalogKind();
     return this.catalogMarkets().filter((market) =>
       (sport === 'ALL' || market.sport === sport) &&
+      (kind === 'ALL' || market.kind === kind) &&
       (!query || [market.title, market.eventTitle, market.ticker, market.sport].some((value) => value.toLowerCase().includes(query)))
     );
   });
+  readonly visibleCatalog = computed(() => this.catalogFiltered().slice(0, this.catalogLimit()));
   readonly catalogEmpty = computed(() => this.catalogQuery().trim()
     ? 'No loaded contracts match this search. Clear the text filter or load more.'
     : this.catalogSport() !== 'ALL'
       ? `No ${this.catalogSport()} contracts found in indexed pages yet. Refresh as the scan progresses.`
       : 'No matching markets loaded yet. Clear the search or load more pages.');
   readonly nba = signal<NbaComparisonResponse | null>(null);
+  readonly nbaLimit = signal(DEFAULT_LIST_SIZE);
+  readonly visibleNbaGames = computed(() => (this.nba()?.games ?? []).slice(0, this.nbaLimit()));
   readonly nbaLoading = signal(false);
   readonly nbaError = signal<string | null>(null);
   readonly snapshot = signal<RadarResponse | null>(null);
@@ -412,6 +386,35 @@ export class AppComponent implements OnInit, OnDestroy {
     this.nbaRequestId++;
     this.evRequestId++;
     this.catalogRequestId++;
+  }
+
+  setView(view: 'scanner' | 'research' | 'explorer'): void {
+    this.activeView.set(view);
+  }
+
+  openNbaMarkets(): void {
+    this.setView('explorer');
+    this.selectCatalogSport('NBA');
+  }
+
+  setPositiveOnly(positive: boolean): void {
+    this.evOnlyPositive.set(positive);
+    this.evLimit.set(DEFAULT_LIST_SIZE);
+  }
+
+  showMoreEv(): void { this.evLimit.update((limit) => limit + DEFAULT_LIST_SIZE); }
+  showMoreNba(): void { this.nbaLimit.update((limit) => limit + DEFAULT_LIST_SIZE); }
+  showMoreCatalog(): void { this.catalogLimit.update((limit) => limit + DEFAULT_LIST_SIZE); }
+
+  setCatalogQuery(query: string): void {
+    this.catalogQuery.set(query);
+    this.catalogLimit.set(DEFAULT_LIST_SIZE);
+  }
+
+  setCatalogKind(kind: string): void {
+    if (kind !== 'ALL' && kind !== 'game' && kind !== 'championship' && kind !== 'other') return;
+    this.catalogKind.set(kind);
+    this.catalogLimit.set(DEFAULT_LIST_SIZE);
   }
 
   async showHistory(market: RadarMarket): Promise<void> {
@@ -511,6 +514,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.catalogRequestId++;
     this.catalogLoading.set(false);
     this.catalogSport.set(sport);
+    this.catalogLimit.set(DEFAULT_LIST_SIZE);
     this.catalog.set(null);
     this.catalogMarkets.set([]);
     this.catalogCursor.set(null);
@@ -590,20 +594,8 @@ export class AppComponent implements OnInit, OnDestroy {
 
   trackGame(_: number, game: NbaComparison): string { return game.gameId; }
 
-  timeLabel(): string {
-    const timestamp = this.snapshot()?.scannedAt;
-    if (!timestamp) return 'AWAITING';
-    return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' });
-  }
-
   cents(value: number | null): string {
     return value === null || !Number.isFinite(value) ? '—' : `${Math.round(value * 100)}¢`;
-  }
-
-  changeLabel(value: number | null): string {
-    if (value === null || !Number.isFinite(value)) return '—';
-    const cents = Math.round(value * 100);
-    return `${cents > 0 ? '+' : ''}${cents}¢`;
   }
 
   volume(value: number): string {
