@@ -241,14 +241,26 @@ function eventTeams(event: EspnEvent): { home: EspnCompetitor; away: EspnCompeti
   return home?.team?.id && away?.team?.id ? { home, away } : null;
 }
 
-export async function scanNbaComparisons(now = new Date()): Promise<NbaComparisonResponse> {
+export interface NbaComparisonSelection { gameId: string; date: string }
+
+export function validComparisonSelection(selection: NbaComparisonSelection, now = new Date()): boolean {
+  if (!/^\d{5,20}$/.test(selection.gameId) || !/^\d{4}-\d{2}-\d{2}$/.test(selection.date)) return false;
+  const parsed = new Date(`${selection.date}T12:00:00Z`);
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== selection.date) return false;
+  const today = Date.parse(`${laDate(now)}T12:00:00Z`);
+  const offset = (parsed.getTime() - today) / ONE_DAY_MS;
+  return offset >= -1 && offset <= 8;
+}
+
+export async function scanNbaComparisons(now = new Date(), selection?: NbaComparisonSelection): Promise<NbaComparisonResponse> {
   const today = laDate(now);
-  const nextDay = tomorrow(today);
-  const month = Number(today.slice(5, 7));
-  const season = Number(today.slice(0, 4)) + (month >= 10 ? 1 : 0);
+  const targetDay = selection?.date ?? today;
+  const nextDay = tomorrow(targetDay);
+  const month = Number(targetDay.slice(5, 7));
+  const season = Number(targetDay.slice(0, 4)) + (month >= 10 ? 1 : 0);
   const fetchedAt = new Date().toISOString();
   const endpoints = [
-    `${ESPN_SITE}/scoreboard?dates=${isoDateKey(today)}&limit=100`,
+    `${ESPN_SITE}/scoreboard?dates=${isoDateKey(targetDay)}&limit=100`,
     `${ESPN_SITE}/scoreboard?dates=${isoDateKey(nextDay)}&limit=100`,
     `${ESPN_STANDINGS}?season=${season}`,
     `${ESPN_SITE}/injuries`
@@ -279,8 +291,9 @@ export async function scanNbaComparisons(now = new Date()): Promise<NbaCompariso
     // ESPN also publishes preseason and tournament exhibition fixtures.
     if (event.season?.type !== 2) continue;
     const day = laDate(new Date(event.date));
-    if (day !== today && day !== nextDay) continue;
-    if (Date.parse(event.date) > now.getTime() + ONE_DAY_MS) continue;
+    if (day !== targetDay && day !== nextDay) continue;
+    if (selection && event.id !== selection.gameId) continue;
+    if (!selection && Date.parse(event.date) > now.getTime() + ONE_DAY_MS) continue;
     unique.set(event.id, event);
   }
   const eligible = [...unique.values()].sort((a, b) => {
@@ -333,7 +346,7 @@ export async function scanNbaComparisons(now = new Date()): Promise<NbaCompariso
   if (games.some((game) => game.headToHead.partial)) warnings.push('Some head-to-head schedules could not be retrieved.');
   return {
     source: 'ESPN public basketball feeds', fetchedAt, season,
-    window: { startsOn: today, endsBefore: tomorrow(nextDay), timeZone: 'America/Los_Angeles' },
+    window: { startsOn: targetDay, endsBefore: tomorrow(nextDay), timeZone: 'America/Los_Angeles' },
     games,
     counts: { eligibleGames: eligible.length, returnedGames: games.length, partialCoverage: warnings.length > 0 },
     warnings,
@@ -348,7 +361,21 @@ export async function scanNbaComparisons(now = new Date()): Promise<NbaCompariso
 export async function handleNbaComparisons(request: Request): Promise<Response> {
   const url = new URL(request.url);
   const fresh = url.searchParams.get('fresh') === '1';
-  const cacheKey = new Request(new URL('/api/nba/comparisons', url.origin).toString());
+  const gameId = url.searchParams.get('gameId');
+  const date = url.searchParams.get('date');
+  if ((gameId === null) !== (date === null)) {
+    return Response.json({ error: 'A selected game requires both a game ID and date.' }, { status: 400 });
+  }
+  const selection = gameId !== null && date !== null ? { gameId, date } : undefined;
+  if (selection && !validComparisonSelection(selection)) {
+    return Response.json({ error: 'The selected game or date is invalid or outside the scouting window.' }, { status: 400 });
+  }
+  const cacheUrl = new URL('/api/nba/comparisons', url.origin);
+  if (selection) {
+    cacheUrl.searchParams.set('gameId', selection.gameId);
+    cacheUrl.searchParams.set('date', selection.date);
+  }
+  const cacheKey = new Request(cacheUrl.toString());
   const cache = (caches as CacheStorage & { default: Cache }).default;
   if (!fresh) {
     const cached = await cache.match(cacheKey);
@@ -358,7 +385,7 @@ export async function handleNbaComparisons(request: Request): Promise<Response> 
     // Ratings are built concurrently with matchup data; an unavailable model
     // never prevents publication of the underlying sourced comparisons.
     const [comparisonResult, modelResult] = await Promise.allSettled([
-      scanNbaComparisons(), currentEloSnapshot()
+      scanNbaComparisons(new Date(), selection), currentEloSnapshot()
     ]);
     if (comparisonResult.status === 'rejected') throw comparisonResult.reason;
     const result = comparisonResult.value;
