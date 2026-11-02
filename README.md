@@ -2,7 +2,7 @@
 
 An open-source, read-only sports market intelligence dashboard.
 
-**Status:** NBA comparison desk with an experimental, historically backtested Elo win-probability baseline, plus the phase-one Kalshi radar. The NBA model does **not** use market prices, lineups, or injuries and does **not** establish an actionable betting edge. The 55–65¢ band tracks quoted YES asks; a D1-backed historical price chart is available once collection has started.
+**Status:** NBA comparison desk with an experimental, historically backtested Elo win-probability baseline, a resumable public Kalshi Sports catalog, and a sampled 30-minute market-price history. Sports discovery has **no default YES-price range, league whitelist or top-180 result cutoff**. The NBA model does **not** use market prices, lineups, or injuries and does **not** establish an actionable betting edge.
 
 ## Stack
 
@@ -10,7 +10,7 @@ An open-source, read-only sports market intelligence dashboard.
 - Cloudflare Workers with Static Assets (Angular frontend and API in one deployment)
 - Cloudflare Workers Git integration (automatic deployments from GitHub)
 - Cloudflare edge cache (30-minute response TTL for both data feeds; 5-minute NBA TTL when sources are missing)
-- Cloudflare Cron Trigger (every 30 minutes, UTC) and optional D1 historical price snapshots
+- Cloudflare Cron Trigger (every 2 minutes, UTC) for bounded catalog indexing; existing price-history samples every 30 minutes
 - GitHub Actions (build validation)
 - Reproducible historical NBA Elo baseline, chronological holdout evaluation and on-demand current-season updates
 - Future: verified lineup-aware models, forecast history and calibration monitoring
@@ -37,7 +37,20 @@ Open the URL printed by Wrangler. `ng serve` alone does not serve the `/api/mark
 7. Use Node 24 in the build environment (for example `NODE_VERSION=24.15.0`).
 8. Deploy after the source is committed. Subsequent pushes to `main` trigger Cloudflare builds.
 
-The tracked `apps/web/wrangler.jsonc` declares the Worker entrypoint, Angular build directory, and static-asset binding. `/api/markets`, `/api/nba/comparisons`, `/api/history`, and `/api/health` are served by the Worker; other routes serve the static Angular app.
+The tracked `apps/web/wrangler.jsonc` declares the Worker entrypoint, Angular build directory, and static-asset binding. `/api/catalog`, `/api/markets`, `/api/nba/comparisons`, `/api/history`, and `/api/health` are served by the Worker; other routes serve the static Angular app.
+
+### Full Sports catalog (no price band)
+
+`GET /api/catalog` lists **all quoted prices** on standard open Kalshi Sports events. It walks the upstream `GET /events?status=open&limit=200&with_nested_markets=true` cursor without a fixed page or contract cutoff, filters for the provider's actual `category: Sports` label, and retains every recognized open contract. No minimum price, maximum price, selected-league restriction or volume ranking is applied. The dashboard provides search and sport filters over **loaded** contracts, with a **Load more** button for cursor pagination.
+
+Once migration `0002_sports_catalog.sql` is applied, one upstream page is indexed every **two minutes**. Progress, indexed market count, last update, and whether a full traversal has completed are returned in every response. Each provider page is saved in bounded 80-contract D1 chunks; a cursor is advanced together with the chunks to avoid silently skipping pages. The newest completed traversal remains browseable while the next traversal builds. The historical quote sampler remains independent and continues every 30 minutes.
+
+```bash
+curl 'https://open-sports-intelligence.iloreto97.workers.dev/api/catalog'
+# Follow the JSON `nextCursor` with /api/catalog?cursor=<URL-encoded-nextCursor>
+```
+
+Without D1 or before applying migration 0002, `/api/catalog` falls back to **live, cursor-paginated** Kalshi event data. This fallback does not claim total-market counts or background completion. If provider rate limits are hit, the scheduled collector pauses and retries. Full traversal may take hours; opening the dashboard does not force an unbounded fetch. The catalog is an inventory gathered over time, **not a simultaneous order-book snapshot**. It currently covers standard Sports events; Kalshi's *multivariate combo* markets are not available from this endpoint and are explicitly excluded. No independent forecast-to-contract match means no EV is calculated here.
 
 ### NBA matchup comparison API
 
@@ -84,28 +97,28 @@ The new dashboard and live market feed **work without D1**. Until D1 is connecte
    ]
    ```
 
-3. Apply the bundled schema: `npx wrangler d1 migrations apply open-sports-radar --remote` (from `apps/web`).
-4. Redeploy from GitHub. `triggers.crons` already schedules ingestion at `*/30 * * * *` (UTC).
+3. Apply both bundled migrations, including `0002_sports_catalog.sql`: `npx wrangler d1 migrations apply open-sports-radar --remote` (from `apps/web`).
+4. Redeploy from GitHub. `triggers.crons` schedules index advancement at `*/2 * * * *` (UTC) and sampled price history on the 30-minute marks.
 5. After **two successful collections** (usually about 30–60 minutes after activation), choose **VIEW** next to a market to see its price-history chart.
 
 Only the scheduled collector stores historical points. Browser refreshes may fetch the newest quote but do not invent or backfill price samples. Snapshots are retained for seven days; the chart shows the last 24 hours. The public history endpoint takes a market ticker only and cannot place orders.
 
 ## Data correctness
 
-- Source: Kalshi's public `GET /series` and `GET /markets` endpoints.
-- The API adapter discovers sports series and samples a limited number per league to stay inside early-stage runtime/resource budgets. The response explicitly reports partial coverage, including the 55–65¢ watch band.
+- Full-book source: Kalshi's public cursor-paginated `GET /events` endpoint, with nested markets and `category: Sports` filtering. Multivariate combo events are excluded; upstream cursors are exhausted incrementally and coverage is labeled incomplete until then.
+- Legacy 30-minute price-history source: Kalshi's `GET /series` and `GET /markets` endpoints. This independent sampling adapter still selects a bounded subset of series; its response explicitly reports partial coverage, and its sampled panels are labeled separately from the full catalog.
 - YES ask is the published offer price, **not** an independently modeled win probability.
 - The displayed change is Kalshi's `last_price_dollars - previous_price_dollars` where both values are available. It is **not** yet a measured 30-minute delta.
-- Cache TTL and browser polling are 30 minutes. When D1 is bound, Cron Triggers collect scheduled history independently of site visitors; otherwise the public market endpoint remains on-demand.
+- The legacy market cache TTL and browser polling are 30 minutes. The full Sports catalog has no-store responses and advances through D1 every two minutes. Cron Triggers collect scheduled history independently of site visitors; otherwise the public market endpoint remains on-demand.
 - Without D1, no persistent price history is claimed. Injury integration is observational only; the experimental Elo model has a completed historical holdout but not verified lineups, ongoing forward calibration, or any demonstrated net-edge logic.
 - The app contains no order, portfolio, or account endpoints.
 
 ## Roadmap
 
-1. **Phase one implemented:** D1-backed 30-minute scheduled snapshots, history API, chart, 55–65¢ watch band (requires D1 provisioning for persistence).
+1. **Market history implemented:** D1-backed 30-minute scheduled snapshots, history API and chart (requires D1 provisioning for persistence).
 2. **NBA comparison implemented:** season statistics, L10, dated injuries, and last-five head-to-head results with coverage warnings.
 3. **NBA model implemented:** reproducible Elo baseline, 2025–26 walk-forward holdout, empirical probability buckets, current-season updates.
-4. Remaining: coverage-aware market taxonomy, full pagination, verified starting lineups and robust data-source contracts.
+4. **Full standard Sports catalog implemented:** unbounded cursor traversal across scheduled invocations, coverage accounting, D1 paging, all YES prices, sport/search controls. Remaining: multivariate-market support, deeper sport taxonomy, live quote refresh and robust data-source contracts.
 5. Sport-specific, lineup-aware and championship models, with prospective calibration monitoring.
 6. Fee/slippage-aware discrepancy calculations, honest historical backtesting, and published forecast/outcome logs (including losses and data gaps).
 

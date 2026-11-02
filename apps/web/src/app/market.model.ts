@@ -33,6 +33,21 @@ export interface RadarResponse {
   notes: string[];
 }
 
+export interface SportsCatalogResponse {
+  source: 'Kalshi public Sports events';
+  mode: 'indexed' | 'live';
+  scanId: string | null;
+  updatedAt: string;
+  complete: boolean;
+  scanning: boolean;
+  scannedPages: number;
+  scannedSportsEvents: number;
+  indexedMarkets: number;
+  markets: RadarMarket[];
+  nextCursor: string | null;
+  warnings: string[];
+}
+
 export interface RadarHistoryPoint {
   sampledAt: string;
   yesAsk: number | null;

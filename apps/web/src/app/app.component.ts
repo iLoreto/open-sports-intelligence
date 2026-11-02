@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnDestroy, OnInit, computed, signal } from '@angular/core';
-import type { NbaComparison, NbaComparisonResponse, RadarHistoryResponse, RadarMarket, RadarResponse } from './market.model';
+import type { NbaComparison, NbaComparisonResponse, RadarHistoryResponse, RadarMarket, RadarResponse, SportsCatalogResponse } from './market.model';
 
 const REFRESH_MS = 30 * 60 * 1000;
 
@@ -26,9 +26,9 @@ const REFRESH_MS = 30 * 60 * 1000;
 
     <main class="container">
       <section class="hero">
-        <div class="eyebrow"><span class="eyebrow-line"></span> THE INTELLIGENCE TERMINAL <span class="version-tag">V0.3 / NBA ELO</span></div>
+        <div class="eyebrow"><span class="eyebrow-line"></span> THE INTELLIGENCE TERMINAL <span class="version-tag">V0.4 / FULL BOOK</span></div>
         <h1>See the market.<br><span>Question the price.</span></h1>
-        <p class="hero-copy">Compare NBA teams using recorded results, injuries and a historically tested Elo baseline. Experimental model estimates stay separate from public market quotes.</p>
+        <p class="hero-copy">Explore public Sports contracts at every quoted price, and compare NBA teams using recorded results and an experimental, historically tested Elo baseline. Market prices and model estimates stay separate.</p>
         <div class="hero-actions">
           <span class="source-state"><span class="source-pulse"></span> {{ loading() ? 'SCANNING PUBLIC FEED' : error() ? 'FEED UNAVAILABLE' : 'KALSHI FEED CONNECTED' }}</span>
           <button class="refresh-button" type="button" (click)="refresh(true)" [disabled]="loading() || nbaLoading()" [attr.aria-busy]="loading() || nbaLoading()">
@@ -127,9 +127,45 @@ const REFRESH_MS = 30 * 60 * 1000;
         </ng-container>
       </section>
 
+      <section class="radar-panel catalog-panel" aria-label="Full Kalshi Sports catalog">
+        <div class="panel-heading">
+          <div>
+            <div class="section-kicker">01 / FULL SPORTS BOOK</div>
+            <h2>Every price. Every listed sport. <span class="heading-count">{{ catalog()?.indexedMarkets ?? '—' }} discovered</span></h2>
+            <p>Cursor-based discovery of open standard Sports events, without price bands, league whitelists or a top-market cutoff.</p>
+          </div>
+          <span class="panel-pill" [class.catalog-building]="!catalog()?.complete">{{ catalog()?.complete ? 'TRAVERSAL COMPLETE' : 'INDEXING / PARTIAL' }}</span>
+        </div>
+        <div class="catalog-progress" *ngIf="catalog() as data">
+          <span><strong>{{ data.mode === 'indexed' ? 'INDEXED' : 'LIVE BROWSE' }}</strong> · {{ data.scannedPages }} provider {{ data.scannedPages === 1 ? 'page' : 'pages' }} traversed</span>
+          <span>{{ data.scannedSportsEvents }} Sports events found · updated {{ dateTime(data.updatedAt) }}</span>
+        </div>
+        <div *ngFor="let warning of catalog()?.warnings ?? []" class="catalog-notice">{{ warning }}</div>
+        <p class="catalog-notice" *ngIf="catalogError()" role="alert">Full-book feed: {{ catalogError() }}</p>
+        <p class="catalog-notice" *ngIf="catalogLoading() && !catalog()">Discovering public Sports markets…</p>
+        <div class="catalog-controls">
+          <label class="catalog-control-label">SEARCH LOADED CONTRACTS
+            <input type="search" [value]="catalogQuery()" (input)="catalogQuery.set($any($event.target).value)" placeholder="Team, title, ticker…" aria-label="Search loaded Sports contracts" />
+          </label>
+          <label class="catalog-control-label">SPORT
+            <select [value]="catalogSport()" (change)="catalogSport.set($any($event.target).value)" aria-label="Filter loaded contracts by sport">
+              <option value="ALL">ALL SPORTS</option>
+              <option *ngFor="let sport of catalogSports()" [value]="sport">{{ sport }}</option>
+            </select>
+          </label>
+          <div class="catalog-filter-count">{{ catalogFiltered().length }} matching / {{ catalogMarkets().length }} loaded</div>
+        </div>
+        <ng-container *ngTemplateOutlet="marketsTable; context: { rows: catalogFiltered(), empty: catalogLoading() ? 'Fetching Sports markets…' : 'No matching markets loaded yet. Clear the filters or load more pages.' }"></ng-container>
+        <div class="catalog-load" *ngIf="catalogCursor() || catalogLoading()">
+          <span>Search and sport filters apply to loaded contracts. Load more to extend the visible book.</span>
+          <button class="refresh-button" type="button" (click)="loadMoreCatalog()" [disabled]="catalogLoading() || !catalogCursor()">{{ catalogLoading() ? 'LOADING…' : 'LOAD MORE CONTRACTS' }}</button>
+        </div>
+        <p class="catalog-footer">An indexed traversal takes time and is not a simultaneous order-book snapshot. Quotes may change while the scan runs. This panel does not calculate EV without a matched independent forecast.</p>
+      </section>
+
       <section class="stat-strip" aria-label="Radar overview">
-        <div class="stat-item"><span class="stat-label">MARKETS IN VIEW</span><strong>{{ snapshot()?.counts?.returnedMarkets ?? '—' }}</strong><small>Selected sports series</small></div>
-        <div class="stat-item"><span class="stat-label">SERIES CHECKED</span><strong>{{ snapshot()?.counts?.scannedSeries ?? '—' }}</strong><small>Kalshi catalog</small></div>
+        <div class="stat-item"><span class="stat-label">SPORTS BOOK INDEX</span><strong>{{ catalog()?.indexedMarkets ?? '—' }}</strong><small>{{ catalog()?.complete ? 'Completed standard-event traversal' : 'Discovered so far' }}</small></div>
+        <div class="stat-item"><span class="stat-label">PAGES TRAVERSED</span><strong>{{ catalog()?.scannedPages ?? '—' }}</strong><small>{{ catalog()?.mode === 'indexed' ? 'Background cursor scan' : 'Live browsing' }}</small></div>
         <div class="stat-item"><span class="stat-label">DATA UPDATED</span><strong class="time-stat">{{ timeLabel() }}</strong><small>Automatic 30-minute refresh</small></div>
         <div class="stat-item"><span class="stat-label">MODEL STATUS</span><strong class="model-stat">NBA ELO</strong><small>Historical backtest; no edge claim</small></div>
       </section>
@@ -146,17 +182,11 @@ const REFRESH_MS = 30 * 60 * 1000;
       </div>
 
       <ng-container *ngIf="snapshot() as data">
-        <div *ngIf="data.counts.partialCoverage" class="coverage-note"><span class="coverage-dash"></span> Initial scan covers a selected subset of sports series. Full-catalog historical collection is the next engineering milestone.</div>
+        <div *ngIf="data.counts.partialCoverage" class="coverage-note"><span class="coverage-dash"></span> The legacy 30-minute price-history sampler covers selected sports series; the full catalog above is indexed independently.</div>
 
-        <section class="radar-panel watch-panel">
-          <div class="panel-heading">
-            <div><div class="section-kicker">01 / PRICE WATCH</div><h2>55–65¢ watch band <span class="heading-count">{{ watch().length }}</span></h2><p>Upcoming-game and championship YES asks in your preferred range. Price alone is not an edge or a recommendation.</p></div>
-            <span class="panel-pill">WATCH ONLY</span>
-          </div>
-          <ng-container *ngTemplateOutlet="marketsTable; context: { rows: watch(), empty: 'No matching markets in the current partial scan.' }"></ng-container>
-        </section>
+      </ng-container>
 
-        <section class="history-panel" *ngIf="selectedMarket() as selected">
+      <section class="history-panel" *ngIf="selectedMarket() as selected">
           <div class="history-heading">
             <div><div class="section-kicker">MARKET HISTORY / LAST 24 HOURS</div><h2>{{ selected.title }}</h2><p>{{ selected.ticker }} · Scheduled 30-minute YES ask samples</p></div>
             <button type="button" class="history-close" (click)="closeHistory()" aria-label="Close history">×</button>
@@ -179,11 +209,12 @@ const REFRESH_MS = 30 * 60 * 1000;
             </div>
           </ng-container>
           <p class="history-disclaimer">Samples are collected on a fixed schedule. Gaps indicate missing observations; they are not interpolated trades.</p>
-        </section>
+      </section>
 
+      <ng-container *ngIf="snapshot() as data">
         <section class="radar-panel">
           <div class="panel-heading">
-            <div><div class="section-kicker">02 / EVENT WINDOW</div><h2>Upcoming games <span class="heading-count">{{ games().length }}</span></h2><p>Open sports contracts associated with games in the next 24 hours.</p></div>
+            <div><div class="section-kicker">02 / SAMPLED EVENT WINDOW</div><h2>Upcoming games <span class="heading-count">{{ games().length }}</span></h2><p>Open sports contracts associated with games in the next 24 hours, from the legacy price-history sample.</p></div>
             <span class="panel-pill">ROLLING 24H</span>
           </div>
           <ng-container *ngTemplateOutlet="marketsTable; context: { rows: games(), empty: 'No upcoming game markets returned in this scan.' }"></ng-container>
@@ -191,7 +222,7 @@ const REFRESH_MS = 30 * 60 * 1000;
 
         <section class="radar-panel championships-panel">
           <div class="panel-heading">
-            <div><div class="section-kicker">03 / FUTURES DESK</div><h2>Championship watch <span class="heading-count">{{ championships().length }}</span></h2><p>Season-long and title markets are tracked separately from single games.</p></div>
+            <div><div class="section-kicker">03 / SAMPLED FUTURES DESK</div><h2>Championship watch <span class="heading-count">{{ championships().length }}</span></h2><p>Season-long and title markets from the legacy price-history sample.</p></div>
             <span class="panel-pill purple">FUTURES</span>
           </div>
           <ng-container *ngTemplateOutlet="marketsTable; context: { rows: championships(), empty: 'No championship markets returned in this scan.' }"></ng-container>
@@ -231,6 +262,22 @@ const REFRESH_MS = 30 * 60 * 1000;
   `
 })
 export class AppComponent implements OnInit, OnDestroy {
+  readonly catalog = signal<SportsCatalogResponse | null>(null);
+  readonly catalogMarkets = signal<RadarMarket[]>([]);
+  readonly catalogCursor = signal<string | null>(null);
+  readonly catalogLoading = signal(false);
+  readonly catalogError = signal<string | null>(null);
+  readonly catalogQuery = signal('');
+  readonly catalogSport = signal('ALL');
+  readonly catalogSports = computed(() => [...new Set(this.catalogMarkets().map((market) => market.sport))].sort());
+  readonly catalogFiltered = computed(() => {
+    const query = this.catalogQuery().trim().toLowerCase();
+    const sport = this.catalogSport();
+    return this.catalogMarkets().filter((market) =>
+      (sport === 'ALL' || market.sport === sport) &&
+      (!query || [market.title, market.eventTitle, market.ticker, market.sport].some((value) => value.toLowerCase().includes(query)))
+    );
+  });
   readonly nba = signal<NbaComparisonResponse | null>(null);
   readonly nbaLoading = signal(false);
   readonly nbaError = signal<string | null>(null);
@@ -240,11 +287,6 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly games = computed(() => this.snapshot()?.markets.filter((m) => m.kind === 'game') ?? []);
   readonly championships = computed(() => this.snapshot()?.markets.filter((m) => m.kind === 'championship') ?? []);
   readonly others = computed(() => this.snapshot()?.markets.filter((m) => m.kind === 'other') ?? []);
-  readonly watch = computed(() => this.snapshot()?.markets.filter((market) =>
-    (market.kind === 'game' || market.kind === 'championship') &&
-    market.yesAsk !== null && market.yesAsk >= 0.55 && market.yesAsk <= 0.65 &&
-    !/\b15[ -]?min(?:ute)?s?\b/i.test(market.title)
-  ) ?? []);
   readonly selectedMarket = signal<RadarMarket | null>(null);
   readonly history = signal<RadarHistoryResponse | null>(null);
   readonly historyLoading = signal(false);
@@ -289,6 +331,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private timer: ReturnType<typeof setInterval> | undefined;
   private historyRequestId = 0;
   private nbaRequestId = 0;
+  private catalogRequestId = 0;
 
   ngOnInit(): void {
     void this.refresh();
@@ -299,6 +342,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (this.timer) clearInterval(this.timer);
     this.historyRequestId++;
     this.nbaRequestId++;
+    this.catalogRequestId++;
   }
 
   async showHistory(market: RadarMarket): Promise<void> {
@@ -332,6 +376,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   async refresh(force = false): Promise<void> {
     void this.refreshNba(force);
+    void this.refreshCatalog();
     if (this.loading()) return;
     this.loading.set(true);
     this.error.set(null);
@@ -346,6 +391,54 @@ export class AppComponent implements OnInit, OnDestroy {
       this.error.set(cause instanceof Error ? cause.message : 'Unexpected connection error.');
     } finally {
       this.loading.set(false);
+    }
+  }
+
+  async refreshCatalog(): Promise<void> {
+    if (this.catalogLoading()) return;
+    const requestId = ++this.catalogRequestId;
+    this.catalogLoading.set(true);
+    this.catalogError.set(null);
+    try {
+      const response = await fetch('/api/catalog', { cache: 'no-store' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}; retry later.`);
+      const data: SportsCatalogResponse = await response.json();
+      if (!Array.isArray(data?.markets) || !Array.isArray(data?.warnings)) throw new Error('Unexpected Sports catalog response.');
+      if (requestId !== this.catalogRequestId) return;
+      this.catalog.set(data);
+      this.catalogMarkets.set(data.markets);
+      this.catalogCursor.set(data.nextCursor);
+    } catch (error) {
+      if (requestId === this.catalogRequestId) this.catalogError.set(error instanceof Error ? error.message : 'Sports catalog unavailable.');
+    } finally {
+      if (requestId === this.catalogRequestId) this.catalogLoading.set(false);
+    }
+  }
+
+  async loadMoreCatalog(): Promise<void> {
+    const cursor = this.catalogCursor();
+    if (this.catalogLoading() || !cursor) return;
+    const requestId = ++this.catalogRequestId;
+    this.catalogLoading.set(true);
+    this.catalogError.set(null);
+    try {
+      const response = await fetch(`/api/catalog?cursor=${encodeURIComponent(cursor)}`, { cache: 'no-store' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}; retry later.`);
+      const data: SportsCatalogResponse = await response.json();
+      if (!Array.isArray(data?.markets) || !Array.isArray(data?.warnings)) throw new Error('Unexpected Sports catalog page.');
+      if (requestId !== this.catalogRequestId) return;
+      const seen = new Set(this.catalogMarkets().map((market) => market.ticker));
+      this.catalogMarkets.update((current) => [...current, ...data.markets.filter((market) => {
+        if (seen.has(market.ticker)) return false;
+        seen.add(market.ticker);
+        return true;
+      })]);
+      this.catalog.set(data);
+      this.catalogCursor.set(data.nextCursor);
+    } catch (error) {
+      if (requestId === this.catalogRequestId) this.catalogError.set(error instanceof Error ? error.message : 'Could not load the next page.');
+    } finally {
+      if (requestId === this.catalogRequestId) this.catalogLoading.set(false);
     }
   }
 
