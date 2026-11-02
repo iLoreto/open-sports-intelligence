@@ -69,8 +69,12 @@ function fakeDatabase() {
       },
       async all() {
         if (query.startsWith('SELECT page_index')) {
-          const [runId, page, , chunk, limit] = this.args;
-          const rows = state.pages.filter((row) => row.run_id === runId && (row.page_index > page || (row.page_index === page && row.chunk_index > chunk)));
+          const [runId, page, , chunk] = this.args;
+          const limit = this.args.at(-1);
+          const sportNeedle = query.includes('instr(payload, ?)') ? this.args[4] : null;
+          const rows = state.pages.filter((row) => row.run_id === runId &&
+            (row.page_index > page || (row.page_index === page && row.chunk_index > chunk)) &&
+            (!sportNeedle || row.payload.includes(sportNeedle)));
           return { results: rows.slice(0, limit) };
         }
         if (query.startsWith('SELECT id FROM sports_catalog_runs')) return { results: [] };
@@ -110,8 +114,10 @@ test('scheduled catalog persists all 220 contracts in bounded chunks and resumes
   globalThis.fetch = async (url) => {
     const cursor = new URL(url).searchParams.get('cursor') ?? '';
     cursors.push(cursor);
-    return Response.json({ events: [event('Sports', cursor ? [contract('finish', '0.9900')] :
-      Array.from({ length: 220 }, (_, id) => contract(id, '0.0300')))], cursor: cursor ? '' : 'resume-here' });
+    return Response.json({ events: [cursor
+      ? event('Sports', [contract('finish', '0.9900')])
+      : { ...event('Sports', Array.from({ length: 220 }, (_, id) => contract(id, '0.0300')), 'Cricket World Cup'), series_ticker: 'KXCRICKET' }
+    ], cursor: cursor ? '' : 'resume-here' });
   };
   try {
     await advanceSportsCatalog(db);
@@ -129,12 +135,21 @@ test('scheduled catalog persists all 220 contracts in bounded chunks and resumes
     assert.equal(db.state.runs[0].status, 'complete');
     assert.equal(db.state.runs[0].markets_found, 221);
     assert.equal(db.state.batches, 2);
+    const nba = await (await handleSportsCatalog(new Request('https://example.test/api/catalog?sport=NBA'), db)).json();
+    assert.equal(nba.mode, 'indexed');
+    assert.equal(nba.markets.length, 1);
+    assert.equal(nba.markets[0].yesAsk, 0.99);
+    assert.equal(nba.markets[0].sport, 'NBA');
+    const none = await (await handleSportsCatalog(new Request('https://example.test/api/catalog?sport=NHL'), db)).json();
+    assert.equal(none.markets.length, 0);
   } finally { globalThis.fetch = originalFetch; }
 });
 
 test('rejects invalid and expired indexed pagination cursors', async () => {
   const invalid = await handleSportsCatalog(new Request('https://example.test/api/catalog?cursor=bad!'));
   assert.equal(invalid.status, 400);
+  const invalidSport = await handleSportsCatalog(new Request('https://example.test/api/catalog?sport=NBA%27%3BDELETE'));
+  assert.equal(invalidSport.status, 400);
   const expired = await handleSportsCatalog(new Request('https://example.test/api/catalog?cursor=db:sports-2026-11-01T00:00:00.000Z:2:1'), fakeDatabase());
   assert.equal(expired.status, 410);
 });
