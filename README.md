@@ -2,7 +2,7 @@
 
 An open-source, read-only sports market intelligence dashboard.
 
-**Status:** NBA comparison desk with an experimental, historically backtested Elo win-probability baseline, a resumable public Kalshi Sports catalog, and a sampled 30-minute market-price history. Sports discovery has **no default YES-price range, league whitelist or top-180 result cutoff**. The NBA model does **not** use market prices, lineups, or injuries and does **not** establish an actionable betting edge.
+**Status:** NBA comparison desk with an experimental, historically backtested Elo win-probability baseline; an NBA **model-versus-market value lab** for exactly matched game-winner contracts; a resumable public Kalshi Sports catalog; and sampled 30-minute market-price history. Sports discovery has **no default YES-price range, league whitelist or top-180 result cutoff**. The NBA model does **not** use market prices, lineups, or injuries and does **not** establish a verified betting edge.
 
 ## Stack
 
@@ -37,7 +37,7 @@ Open the URL printed by Wrangler. `ng serve` alone does not serve the `/api/mark
 7. Use Node 24 in the build environment (for example `NODE_VERSION=24.15.0`).
 8. Deploy after the source is committed. Subsequent pushes to `main` trigger Cloudflare builds.
 
-The tracked `apps/web/wrangler.jsonc` declares the Worker entrypoint, Angular build directory, and static-asset binding. `/api/catalog`, `/api/markets`, `/api/nba/comparisons`, `/api/history`, and `/api/health` are served by the Worker; other routes serve the static Angular app.
+The tracked `apps/web/wrangler.jsonc` declares the Worker entrypoint, Angular build directory, and static-asset binding. `/api/catalog`, `/api/markets`, `/api/nba/comparisons`, `/api/nba/ev`, `/api/history`, and `/api/health` are served by the Worker; other routes serve the static Angular app.
 
 ### Full Sports catalog (no price band)
 
@@ -84,6 +84,22 @@ The checked-in `apps/web/worker/nba-baseline.ts` contains the versioned historic
 
 Forecasts exclude injuries, roster quality, back-to-backs, travel, player availability, Kalshi prices, and sportsbook quotes. They are research estimates, **not prices to trade, recommendations, or independent demonstrations of edge**.
 
+### NBA model-versus-market EV lab (experimental)
+
+`GET /api/nba/ev` joins **live**, public Kalshi `KXNBAGAME` winner quotes to ESPN regular-season NBA fixtures in the next **seven days**, plus the validated historical Elo baseline. Unlike the long-running D1 Sports catalog, price comparison requests fetch current KXNBAGAME market asks and current series fee metadata directly from Kalshi. Responses are cached for **five minutes**; `?fresh=1` bypasses this cache on manual refresh. No additional Cloudflare migration is needed.
+
+To avoid false matches, a fixture must be scheduled in the ESPN `STD` regular season, have a start time in the future, match **the exact event date in Los Angeles time**, match the full away/home team-code pair in a `KXNBAGAME-YYMMMDD<AWAY><HOME>` ticker, and have both corresponding `-<TEAM>` outcome markets active. Markets for spreads, totals, props, NBA championship futures, live/completed games, and ambiguous team codes are never assigned a game-winner Elo probability. A missing matchup or failed Elo month is reported; no substitute forecast is manufactured. Kalshi market-pagination limits are reported explicitly.
+
+For each exact two-team event, the engine evaluates both market routes to a given outcome: **YES** on that team's market or **NO** on its opponent's market. It displays whichever currently has the lower estimated price-plus-fee for the illustrative 100-contract order, retaining the contract ticker and side:
+
+\[\text{Gross model gap per contract} = P_{\text{Elo}}(\text{winning outcome}) - \text{quoted ask}\]
+
+\[\text{Illustrative EV per contract} = P_{\text{Elo}} - \text{ask} - \frac{\text{estimated 100-contract taker fee}}{100}\]
+
+The fee estimate reads **`fee_type` and `fee_multiplier` live from `GET /series/KXNBAGAME`**. Only the observed `quadratic_with_maker_fees` type is supported. Standard taker fee formula: `ceil(100 × 0.07 × multiplier × quantity × price × (1 − price)) / 100` dollars, rounded upward once per order. If fee terms cannot be verified, estimated net EV and fee-adjusted break-even are **null**; the gross gap can still be shown. The user can filter to positive model estimates or inspect all (including negative) comparisons. Fees, the executable quote, and availability may differ from the 100-contract illustration, particularly for special contract terms and liquidity.
+
+This calculation is **model-implied expected value, not a demonstrated tradeable edge**. The Elo model is imperfectly calibrated, excludes lineup/injury/rest/travel factors, and uses historical data that may not be predictive today. The results do not simulate fills, validate injury-adjusted probabilities, or backtest realized P&L against contemporaneous Kalshi asks. No capital allocation or recommendations are generated. The model compares **Kalshi game-winner contracts**, not external sportsbook moneylines; those will require separate licensed odds/data-source matching.
+
 ### Enable persistent price history (one-time infrastructure setup)
 
 The new dashboard and live market feed **work without D1**. Until D1 is connected, `/api/history?ticker=...` explicitly returns `available: false` with no fabricated price history.
@@ -117,10 +133,10 @@ Only the scheduled collector stores historical points. Browser refreshes may fet
 
 1. **Market history implemented:** D1-backed 30-minute scheduled snapshots, history API and chart (requires D1 provisioning for persistence).
 2. **NBA comparison implemented:** season statistics, L10, dated injuries, and last-five head-to-head results with coverage warnings.
-3. **NBA model implemented:** reproducible Elo baseline, 2025–26 walk-forward holdout, empirical probability buckets, current-season updates.
+3. **NBA model and EV research implemented:** reproducible Elo baseline, 2025–26 walk-forward holdout, empirical probability buckets, current-season updates, and exact live KXNBAGAME price-vs-model comparison with explicit fee assumptions.
 4. **Full standard Sports catalog implemented:** unbounded cursor traversal across scheduled invocations, coverage accounting, D1 paging, all YES prices, sport/search controls. Remaining: multivariate-market support, deeper sport taxonomy, live quote refresh and robust data-source contracts.
 5. Sport-specific, lineup-aware and championship models, with prospective calibration monitoring.
-6. Fee/slippage-aware discrepancy calculations, honest historical backtesting, and published forecast/outcome logs (including losses and data gaps).
+6. Remaining: external sportsbook odds comparisons, exact execution/size-aware fee and slippage estimates, honest prospective EV backtesting, and published forecast/outcome logs (including losses and data gaps).
 
 ## License
 

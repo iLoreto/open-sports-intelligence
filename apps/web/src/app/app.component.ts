@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnDestroy, OnInit, computed, signal } from '@angular/core';
-import type { NbaComparison, NbaComparisonResponse, RadarHistoryResponse, RadarMarket, RadarResponse, SportsCatalogResponse } from './market.model';
+import type { NbaComparison, NbaComparisonResponse, NbaEvResponse, RadarHistoryResponse, RadarMarket, RadarResponse, SportsCatalogResponse } from './market.model';
 
 const REFRESH_MS = 30 * 60 * 1000;
 
@@ -26,9 +26,9 @@ const REFRESH_MS = 30 * 60 * 1000;
 
     <main class="container">
       <section class="hero">
-        <div class="eyebrow"><span class="eyebrow-line"></span> THE INTELLIGENCE TERMINAL <span class="version-tag">V0.4 / FULL BOOK</span></div>
+        <div class="eyebrow"><span class="eyebrow-line"></span> THE INTELLIGENCE TERMINAL <span class="version-tag">V0.5 / NBA EV LAB</span></div>
         <h1>See the market.<br><span>Question the price.</span></h1>
-        <p class="hero-copy">Explore public Sports contracts at every quoted price, and compare NBA teams using recorded results and an experimental, historically tested Elo baseline. Market prices and model estimates stay separate.</p>
+        <p class="hero-copy">Explore public Sports contracts at every quoted price. Compare exact NBA winner quotes against our historically tested Elo estimates, with transparent fee assumptions and data-quality checks.</p>
         <div class="hero-actions">
           <span class="source-state"><span class="source-pulse"></span> {{ loading() ? 'SCANNING PUBLIC FEED' : error() ? 'FEED UNAVAILABLE' : 'KALSHI FEED CONNECTED' }}</span>
           <button class="refresh-button" type="button" (click)="refresh(true)" [disabled]="loading() || nbaLoading()" [attr.aria-busy]="loading() || nbaLoading()">
@@ -124,6 +124,57 @@ const REFRESH_MS = 30 * 60 * 1000;
             </div>
           </div>
           <div class="nba-footnote">ESPN-reported statistics and injuries may lag official updates. Elo provides an independent *experimental* estimate; it is not a calibrated sportsbook line, verified lineup forecast or demonstrated betting edge. ESPN's public JSON feeds are subject to change.</div>
+        </ng-container>
+      </section>
+
+      <section class="radar-panel ev-panel" aria-label="NBA model versus market value comparison">
+        <div class="panel-heading">
+          <div>
+            <div class="section-kicker">NBA / EXPERIMENTAL EV LAB</div>
+            <h2>Model vs. market <span class="heading-count">{{ ev()?.counts?.comparedOffers ?? '—' }} comparisons</span></h2>
+            <p>Exact NBA game-winner contracts only · Next seven days · Live Kalshi asks vs independent Elo forecasts.</p>
+          </div>
+          <span class="panel-pill ev-pill">MODEL-BASED · NOT VERIFIED EDGE</span>
+        </div>
+        <p class="nba-state" *ngIf="evLoading() && !ev()">Checking upcoming NBA games, live prices and series fees…</p>
+        <p *ngIf="evError()" class="nba-warning" role="alert">NBA EV desk: {{ evError() }}</p>
+        <ng-container *ngIf="ev() as data">
+          <div class="ev-summary">
+            <div><span>EXACT GAME MATCHES</span><strong>{{ data.counts.matchedGames }} <small>/ {{ data.counts.scheduledGames }} upcoming</small></strong></div>
+            <div><span>POSITIVE MODEL ESTIMATES</span><strong>{{ evPositiveCount() }}</strong></div>
+            <div><span>VALIDATION BRIER</span><strong>{{ data.model.validationBrier.toFixed(3) }}</strong></div>
+            <div><span>LIVE QUOTES FETCHED</span><strong class="ev-time">{{ dateTime(data.fetchedAt) }}</strong></div>
+          </div>
+          <div *ngFor="let warning of data.warnings" class="ev-warning">{{ warning }}</div>
+          <div *ngIf="!data.model.available" class="ev-warning">Current Elo ratings could not be verified. EV estimates are withheld.</div>
+          <div class="ev-toolbar">
+            <label class="ev-toggle"><input type="checkbox" [checked]="evOnlyPositive()" (change)="evOnlyPositive.set($any($event.target).checked)" /> Show positive model estimates only</label>
+            <span>{{ evRows().length }} shown · sorted by illustrative EV</span>
+          </div>
+          <div class="table-wrap" *ngIf="evRows().length">
+            <table class="ev-table">
+              <thead><tr><th>NBA GAME / OUTCOME</th><th>EXACT MARKET ROUTE</th><th class="numeric">ELO WIN %</th><th class="numeric">ASK</th><th class="numeric">GROSS GAP</th><th class="numeric">EST. FEE*</th><th class="numeric">MODEL EV*</th><th class="numeric">BREAK-EVEN*</th><th>CONTRACT</th></tr></thead>
+              <tbody>
+                <tr *ngFor="let row of evRows(); trackBy: trackEvOffer">
+                  <td><strong class="ev-team">{{ row.team }}</strong><div class="event-title">{{ row.away }} @ {{ row.home }}</div><div class="event-title">{{ dateTime(row.startTime) }}</div></td>
+                  <td><strong class="ev-route">{{ row.side }} · {{ row.yesMarketTeam }}</strong><div class="market-ticker">{{ row.ticker }}</div></td>
+                  <td class="numeric">{{ percent(row.modelProbability) }}</td>
+                  <td class="numeric main-price">{{ cents(row.ask) }}</td>
+                  <td class="numeric"><span [class.ev-positive]="row.grossEdge > 0" [class.ev-negative]="row.grossEdge <= 0">{{ signedCents(row.grossEdge) }}</span></td>
+                  <td class="numeric price-muted">{{ preciseCents(row.feePerContract) }}</td>
+                  <td class="numeric"><span class="ev-value" [class.ev-positive]="(row.illustrativeNetEv ?? 0) > 0" [class.ev-negative]="(row.illustrativeNetEv ?? 0) <= 0">{{ signedCents(row.illustrativeNetEv) }}</span></td>
+                  <td class="numeric price-muted">{{ row.breakEvenProbability === null ? '—' : percent(row.breakEvenProbability) }}</td>
+                  <td><a class="history-button" [href]="'https://kalshi.com/markets/kxnbagame/event/' + row.eventTicker.toLowerCase()" target="_blank" rel="noopener noreferrer">OPEN ↗</a></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="empty-state" *ngIf="!evRows().length">{{ evOnlyPositive() && data.offers.length ? 'No positive illustrative model EV among the matching quotes.' : 'No exact, model-eligible NBA game-winner comparisons are available in this window yet.' }}</div>
+          <details class="ev-unmatched" *ngIf="data.unmatched.length">
+            <summary>UNMATCHED UPCOMING GAMES <span>{{ data.unmatched.length }} withheld</span></summary>
+            <ul><li *ngFor="let game of data.unmatched">{{ game.away }} @ {{ game.home }} · {{ dateTime(game.startTime) }} — {{ game.reason }}</li></ul>
+          </details>
+          <p class="catalog-footer">*Illustrative EV per $1-settlement contract = model win probability − quoted ask − estimated standard taker fee per contract (assuming one 100-contract order). Fee is based on Kalshi's live KXNBAGAME series multiplier; actual fills, fees, and availability may differ. A positive estimate is not demonstrated profitability.</p>
         </ng-container>
       </section>
 
@@ -262,6 +313,14 @@ const REFRESH_MS = 30 * 60 * 1000;
   `
 })
 export class AppComponent implements OnInit, OnDestroy {
+  readonly ev = signal<NbaEvResponse | null>(null);
+  readonly evLoading = signal(false);
+  readonly evError = signal<string | null>(null);
+  readonly evOnlyPositive = signal(false);
+  readonly evPositiveCount = computed(() => this.ev()?.offers.filter((offer) =>
+    offer.illustrativeNetEv !== null && offer.illustrativeNetEv > 0).length ?? 0);
+  readonly evRows = computed(() => (this.ev()?.offers ?? []).filter((offer) =>
+    !this.evOnlyPositive() || (offer.illustrativeNetEv !== null && offer.illustrativeNetEv > 0)));
   readonly catalog = signal<SportsCatalogResponse | null>(null);
   readonly catalogMarkets = signal<RadarMarket[]>([]);
   readonly catalogCursor = signal<string | null>(null);
@@ -339,6 +398,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private timer: ReturnType<typeof setInterval> | undefined;
   private historyRequestId = 0;
   private nbaRequestId = 0;
+  private evRequestId = 0;
   private catalogRequestId = 0;
 
   ngOnInit(): void {
@@ -350,6 +410,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (this.timer) clearInterval(this.timer);
     this.historyRequestId++;
     this.nbaRequestId++;
+    this.evRequestId++;
     this.catalogRequestId++;
   }
 
@@ -384,6 +445,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   async refresh(force = false): Promise<void> {
     void this.refreshNba(force);
+    void this.refreshEv(force);
     void this.refreshCatalog();
     if (this.loading()) return;
     this.loading.set(true);
@@ -399,6 +461,24 @@ export class AppComponent implements OnInit, OnDestroy {
       this.error.set(cause instanceof Error ? cause.message : 'Unexpected connection error.');
     } finally {
       this.loading.set(false);
+    }
+  }
+
+  async refreshEv(force = false): Promise<void> {
+    if (this.evLoading()) return;
+    const requestId = ++this.evRequestId;
+    this.evLoading.set(true);
+    this.evError.set(null);
+    try {
+      const response = await fetch(force ? '/api/nba/ev?fresh=1' : '/api/nba/ev', { cache: 'no-store' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}; retry later.`);
+      const data: NbaEvResponse = await response.json();
+      if (!Array.isArray(data?.offers) || !Array.isArray(data?.warnings) || !data.counts) throw new Error('Unexpected NBA EV response.');
+      if (requestId === this.evRequestId) this.ev.set(data);
+    } catch (error) {
+      if (requestId === this.evRequestId) this.evError.set(error instanceof Error ? error.message : 'NBA comparison unavailable.');
+    } finally {
+      if (requestId === this.evRequestId) this.evLoading.set(false);
     }
   }
 
@@ -536,5 +616,17 @@ export class AppComponent implements OnInit, OnDestroy {
 
   trackTicker(_: number, row: RadarMarket): string {
     return row.ticker;
+  }
+
+  trackEvOffer(_: number, row: NbaEvResponse['offers'][number]): string {
+    return `${row.eventTicker}:${row.outcome}`;
+  }
+
+  signedCents(value: number | null): string {
+    return value === null || !Number.isFinite(value) ? '—' : `${value > 0 ? '+' : ''}${(value * 100).toFixed(2)}¢`;
+  }
+
+  preciseCents(value: number | null): string {
+    return value === null || !Number.isFinite(value) ? '—' : `${(value * 100).toFixed(2)}¢`;
   }
 }

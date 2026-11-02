@@ -2,6 +2,7 @@ import { handleHealth } from './health';
 import { advanceSportsCatalog, handleSportsCatalog } from './catalog';
 import { handleMarkets, scanMarkets } from './markets';
 import { handleNbaComparisons } from './nba';
+import { handleNbaEv } from './nba-ev';
 import { historyResponse, persistSnapshot, type RadarDatabase } from './persistence';
 
 interface Environment {
@@ -32,6 +33,11 @@ export default {
     if (path === '/api/nba/comparisons') {
       if (request.method !== 'GET') return new Response('Method not allowed', { status: 405 });
       return handleNbaComparisons(request);
+    }
+
+    if (path === '/api/nba/ev') {
+      if (request.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+      return handleNbaEv(request);
     }
 
     if (path === '/api/health') {

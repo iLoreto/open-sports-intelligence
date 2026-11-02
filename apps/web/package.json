@@ -5,7 +5,7 @@
   "scripts": {
     "start": "ng serve",
     "build": "ng build",
-    "typecheck:worker": "tsc --ignoreConfig --noEmit --allowImportingTsExtensions --target ES2022 --module ESNext --moduleResolution Bundler --lib ES2022,DOM --skipLibCheck worker/index.ts worker/markets.ts worker/catalog.ts worker/persistence.ts worker/nba.ts worker/nba-model.ts worker/elo.ts worker/nba-baseline.ts",
+    "typecheck:worker": "tsc --ignoreConfig --noEmit --allowImportingTsExtensions --target ES2022 --module ESNext --moduleResolution Bundler --lib ES2022,DOM --skipLibCheck worker/index.ts worker/markets.ts worker/catalog.ts worker/persistence.ts worker/nba.ts worker/nba-ev.ts worker/nba-model.ts worker/elo.ts worker/nba-baseline.ts",
     "test:nba": "node --test worker/*.test.mjs",
     "build:nba-model": "node build-nba-baseline.mjs",
     "preview": "npm run build && wrangler dev",
