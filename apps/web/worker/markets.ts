@@ -5,9 +5,9 @@
  * trade recommendations are calculated here.
  */
 
-import { latestSnapshot, type RadarDatabase } from './persistence';
+import { latestSnapshot, type RadarDatabase } from './persistence.ts';
 
-interface KalshiSeries {
+export interface KalshiSeries {
   ticker: string;
   title?: string;
   category?: string;
@@ -16,7 +16,7 @@ interface KalshiSeries {
   volume_fp?: string;
 }
 
-interface KalshiMarket {
+export interface KalshiMarket {
   ticker: string;
   event_ticker: string;
   title?: string;
@@ -36,7 +36,7 @@ interface KalshiMarket {
 
 interface SeriesReply { series: KalshiSeries[] }
 interface MarketsReply { markets: KalshiMarket[]; cursor?: string }
-interface ScanMarket {
+export interface ScanMarket {
   ticker: string;
   eventTicker: string;
   title: string;
@@ -61,13 +61,23 @@ const MAX_SERIES_PER_SPORT = 3;
 const MAX_SERIES_TOTAL = 21;
 const MAX_RESULTS = 180;
 
-function numberOrNull(value: string | undefined): number | null {
+export function numberOrNull(value: string | undefined): number | null {
   if (value === undefined || value === '') return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function leagueOf(series: KalshiSeries): string | null {
+export function leagueOf(series: KalshiSeries): string | null {
+  const ticker = series.ticker.toUpperCase();
+  // Kalshi series identifiers often concatenate the league with KX, so word
+  // boundaries in display titles alone are insufficient for catalog coverage.
+  if (/^KXWNBA/.test(ticker)) return 'WNBA';
+  if (/^KXNBA/.test(ticker)) return 'NBA';
+  if (/^KXNHL/.test(ticker)) return 'NHL';
+  if (/^KXNFL/.test(ticker)) return 'NFL';
+  if (/^KXMLB/.test(ticker)) return 'MLB';
+  if (/^KX(?:UFC|MMA)/.test(ticker)) return 'UFC';
+  if (/^KX(?:F1|FORMULA1)/.test(ticker)) return 'F1';
   const text = [series.title, series.ticker, ...(series.tags ?? [])].join(' ').toLowerCase();
   if (/\b(nba|basketball)\b/.test(text)) return 'NBA';
   if (/\b(nhl|hockey|stanley cup)\b/.test(text)) return 'NHL';
@@ -79,7 +89,7 @@ function leagueOf(series: KalshiSeries): string | null {
   return null;
 }
 
-function marketKind(market: KalshiMarket, seriesTitle: string, now: number): ScanMarket['kind'] {
+export function marketKind(market: KalshiMarket, seriesTitle: string, now: number): ScanMarket['kind'] {
   const text = [market.title, market.subtitle, market.yes_sub_title, seriesTitle].join(' ').toLowerCase();
   if (/champion|to win (the )?(title|cup|league|finals)|season winner|stanley cup|super bowl|world series|drivers championship/.test(text)) {
     return 'championship';
@@ -90,6 +100,34 @@ function marketKind(market: KalshiMarket, seriesTitle: string, now: number): Sca
     return 'game';
   }
   return 'other';
+}
+
+/** Common normalization for the legacy dashboard and the full sportsbook catalog. */
+export function normalizeMarket(
+  market: KalshiMarket,
+  context: { sport: string; seriesTitle: string; eventTitle: string },
+  now = Date.now()
+): ScanMarket {
+  const lastPrice = numberOrNull(market.last_price_dollars);
+  const previousPrice = numberOrNull(market.previous_price_dollars);
+  return {
+    ticker: market.ticker,
+    eventTicker: market.event_ticker,
+    title: market.title || market.yes_sub_title || market.ticker,
+    eventTitle: context.eventTitle,
+    sport: context.sport,
+    seriesTitle: context.seriesTitle,
+    kind: marketKind(market, `${context.seriesTitle} ${context.eventTitle}`, now),
+    yesBid: numberOrNull(market.yes_bid_dollars),
+    yesAsk: numberOrNull(market.yes_ask_dollars),
+    noAsk: numberOrNull(market.no_ask_dollars),
+    lastPrice,
+    previousPrice,
+    priceChange: lastPrice === null || previousPrice === null ? null : lastPrice - previousPrice,
+    volume24h: numberOrNull(market.volume_24h_fp) ?? 0,
+    openInterest: numberOrNull(market.open_interest_fp) ?? 0,
+    closeTime: market.close_time || null
+  };
 }
 
 async function kalshiJson<T>(path: string): Promise<T> {
@@ -136,26 +174,10 @@ export async function scanMarkets() {
     for (const market of payload.markets ?? []) {
       if (market.status && !['open', 'active'].includes(market.status)) continue;
       scannedMarkets++;
-      const lastPrice = numberOrNull(market.last_price_dollars);
-      const previousPrice = numberOrNull(market.previous_price_dollars);
-      markets.push({
-        ticker: market.ticker,
-        eventTicker: market.event_ticker,
-        title: market.title || market.yes_sub_title || market.ticker,
-        eventTitle: series.title || market.event_ticker,
-        sport,
-        seriesTitle: series.title || series.ticker,
-        kind: marketKind(market, series.title ?? '', now),
-        yesBid: numberOrNull(market.yes_bid_dollars),
-        yesAsk: numberOrNull(market.yes_ask_dollars),
-        noAsk: numberOrNull(market.no_ask_dollars),
-        lastPrice,
-        previousPrice,
-        priceChange: lastPrice === null || previousPrice === null ? null : lastPrice - previousPrice,
-        volume24h: numberOrNull(market.volume_24h_fp) ?? 0,
-        openInterest: numberOrNull(market.open_interest_fp) ?? 0,
-        closeTime: market.close_time || null
-      });
+      markets.push(normalizeMarket(market, {
+        sport, seriesTitle: series.title || series.ticker,
+        eventTitle: series.title || market.event_ticker
+      }, now));
     }
   }
 

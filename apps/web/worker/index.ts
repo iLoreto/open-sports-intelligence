@@ -1,4 +1,5 @@
 import { handleHealth } from './health';
+import { advanceSportsCatalog, handleSportsCatalog } from './catalog';
 import { handleMarkets, scanMarkets } from './markets';
 import { handleNbaComparisons } from './nba';
 import { historyResponse, persistSnapshot, type RadarDatabase } from './persistence';
@@ -16,6 +17,11 @@ export default {
     if (path === '/api/markets') {
       if (request.method !== 'GET') return new Response('Method not allowed', { status: 405 });
       return handleMarkets(request, env.RADAR_DB);
+    }
+
+    if (path === '/api/catalog') {
+      if (request.method !== 'GET') return new Response('Method not allowed', { status: 405 });
+      return handleSportsCatalog(request, env.RADAR_DB);
     }
 
     if (path === '/api/history') {
@@ -40,11 +46,21 @@ export default {
     return env.ASSETS.fetch(request);
   },
 
-  async scheduled(_event: unknown, env: Environment): Promise<void> {
+  async scheduled(event: { scheduledTime?: number }, env: Environment): Promise<void> {
     if (!env.RADAR_DB) {
-      console.warn('RADAR_DB is not bound; scheduled snapshots are disabled.');
+      console.warn('RADAR_DB is not bound; scheduled catalog and snapshots are disabled.');
       return;
     }
+    try {
+      await advanceSportsCatalog(env.RADAR_DB);
+    } catch (error) {
+      // A pending D1 migration must never interrupt the existing price history.
+      console.error('Resumable Sports catalog scan unavailable', error);
+    }
+    // Background catalog indexing runs every two minutes, but historical
+    // price samples continue on the original 30-minute schedule.
+    const time = new Date(event?.scheduledTime ?? Date.now());
+    if (time.getUTCMinutes() % 30 !== 0) return;
     const snapshot = await scanMarkets();
     await persistSnapshot(env.RADAR_DB, snapshot);
     console.log(`Stored ${snapshot.markets.length} market prices at ${snapshot.scannedAt}`);
