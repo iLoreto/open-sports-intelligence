@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { completedMeetings, injuryMap, scanNbaComparisons, standingsByTeam, teamStats } from './nba.ts';
+import { completedMeetings, injuryMap, scanNbaComparisons, standingsByTeam, teamStats, validComparisonSelection } from './nba.ts';
 
 const home = { id: '1', homeAway: 'home', team: { id: '1', abbreviation: 'AAA', displayName: 'Alpha Aces' }, score: '108' };
 const away = { id: '2', homeAway: 'away', team: { id: '2', abbreviation: 'BBB', displayName: 'Beta Bears' }, score: '99' };
@@ -80,6 +80,44 @@ test('produces a dated comparison, separates missing sources and excludes presea
     assert.ok(result.warnings.some((message) => message.includes('Injury')));
     assert.equal(result.counts.partialCoverage, true);
     assert.ok(requested.some((url) => url.includes('season=2026&seasontype=2')));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('validates game-specific NBA research requests within the EV scouting horizon', () => {
+  const now = new Date('2026-11-02T19:00:00Z');
+  assert.equal(validComparisonSelection({ gameId: '401819234', date: '2026-11-09' }, now), true);
+  assert.equal(validComparisonSelection({ gameId: '401819234', date: '2026-11-12' }, now), false);
+  assert.equal(validComparisonSelection({ gameId: '401819234', date: '2026-02-30' }, now), false);
+  assert.equal(validComparisonSelection({ gameId: '../malformed', date: '2026-11-04' }, now), false);
+});
+
+test('loads only the exact selected game even when it is beyond the default one-day comparison window', async () => {
+  const originalFetch = globalThis.fetch;
+  const event = {
+    id: '401819234', date: '2026-11-07T03:00:00Z', season: { year: 2027, type: 2 },
+    status: { type: { state: 'pre', shortDetail: '7:00 PM PT' } },
+    competitions: [{ competitors: [home, away] }]
+  };
+  const unrelated = { ...event, id: '401819235' };
+  const requested = [];
+  globalThis.fetch = async (url) => {
+    const key = String(url);
+    requested.push(key);
+    if (key.includes('scoreboard?dates=20261106')) return Response.json({ events: [event, unrelated] });
+    if (key.includes('scoreboard?dates=20261107')) return Response.json({ events: [] });
+    if (key.includes('/standings?')) return Response.json({ children: [] });
+    if (key.endsWith('/injuries')) return Response.json({ injuries: [] });
+    if (key.includes('/schedule?')) return Response.json({ events: [] });
+    return new Response('unknown path', { status: 404 });
+  };
+  try {
+    const result = await scanNbaComparisons(new Date('2026-11-02T19:00:00Z'), { gameId: '401819234', date: '2026-11-06' });
+    assert.equal(result.games.length, 1);
+    assert.equal(result.games[0].gameId, '401819234');
+    assert.equal(result.window.startsOn, '2026-11-06');
+    assert.ok(requested.some((url) => url.includes('scoreboard?dates=20261106')));
   } finally {
     globalThis.fetch = originalFetch;
   }
