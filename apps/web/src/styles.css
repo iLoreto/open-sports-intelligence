@@ -145,3 +145,68 @@ table.nba-stat-table{min-width:0;width:100%;table-layout:fixed;border-collapse:c
 .nba-forecast-note,.nba-forecast-missing{font-size:10px;color:#8ba9bf;margin:11px 0 0;line-height:1.6}
 .nba-forecast-missing{padding:10px 0 18px;border-top:1px solid #294258}
 @media(max-width:760px){.nba-model-overview{margin:0 19px;flex-direction:column;align-items:stretch;gap:14px}.nba-model-metrics>div{flex:1}.nba-model-status{padding:8px 19px 14px}.nba-calibration{margin:0 19px 15px}.nba-calibration th,.nba-calibration td{padding:8px 5px;font-size:9px}.nba-forecast{padding:14px}.nba-forecast-heading{flex-direction:column;gap:4px}.nba-forecast-labels strong{font-size:16px}}
+
+/* V0.6: an opportunity-first workspace instead of one continuous market dump. */
+.hero{padding:49px 0 32px}
+.hero h1{font-size:clamp(42px,5vw,67px);margin:15px 0 13px;letter-spacing:-2.7px}
+.hero-copy{max-width:740px;font-size:13px;line-height:1.7}
+.hero-actions{margin-top:20px;justify-content:space-between;gap:18px}
+.workspace-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:10px 0 23px}
+.workspace-tabs button{display:flex;flex-direction:column;gap:5px;align-items:flex-start;text-align:left;padding:16px 18px;border-radius:10px;background:#101b28;color:#99adc0;border:1px solid #27394b;cursor:pointer;transition:background .2s,border-color .2s}
+.workspace-tabs button:hover{background:#162739;border-color:#45617b}
+.workspace-tabs button.active{background:linear-gradient(125deg,#17362f,#142a34);color:#ddfef0;border-color:#549e86;box-shadow:inset 0 2px 0 #69dfb5}
+.workspace-tabs button span{font-size:12px;font-weight:800;letter-spacing:1px}
+.workspace-tabs button small{font-size:10px;color:#8299ac;font-weight:500}
+.workspace-tabs button.active small{color:#a3cbbc}
+.workspace-tabs button:focus-visible,.history-button:focus-visible,.refresh-button:focus-visible{outline:2px solid #9befd2;outline-offset:3px}
+.ev-summary{grid-template-columns:repeat(3,minmax(0,1fr))}
+.ev-summary strong{font-size:23px}
+.ev-opportunities{padding:0 16px 14px;display:flex;flex-direction:column;gap:9px}
+.ev-card{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(250px,1fr) minmax(140px,.6fr);align-items:center;gap:18px;padding:18px 19px;border:1px solid #304840;border-radius:10px;background:#102026}
+.ev-card:hover{border-color:#4c7a6a;background:#12272a}
+.ev-card-event{display:flex;flex-direction:column;min-width:0;gap:5px;color:#9bb4ad;font-size:11px}
+.ev-card-event strong{color:#f0efe0;font:700 17px 'Space Grotesk',sans-serif;line-height:1.2}
+.ev-card-event small{font-size:9px;color:#819e98;line-height:1.45}
+.ev-card-date{font-size:10px;color:#e1be8d}
+.ev-card-numbers{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.ev-card-numbers>div{display:flex;flex-direction:column;gap:7px;min-width:0}
+.ev-card-numbers small{color:#8aab9f;font-size:9px;font-weight:800;letter-spacing:.6px;white-space:nowrap}
+.ev-card-numbers strong{font:700 18px 'Space Grotesk',sans-serif;color:#d6ebde;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ev-card-numbers strong.ev-positive{color:#70eab6}
+.ev-card-numbers strong.ev-negative{color:#e1b3aa}
+.ev-card-actions{display:flex;align-items:stretch;flex-direction:column;gap:10px;min-width:0}
+.ev-card-actions .history-button{text-align:center}
+.ev-card-extra{font-size:9px;color:#87aa9e;overflow-wrap:anywhere;line-height:1.55}
+.ev-card-extra summary{cursor:pointer;font-weight:800;letter-spacing:.7px;text-align:center}
+.ev-card-extra span{display:block;padding:8px 2px 0}
+.ev-data-note{padding:14px 30px;margin:0;color:#92a6a0;font-size:11px;line-height:1.6;border-top:1px solid #354541}
+.ev-data-note button{padding:2px 0;margin-left:4px;border:0;background:none;color:#8ce0bf;font-size:10px;font-weight:800;cursor:pointer}
+.list-progress{display:flex;justify-content:space-between;align-items:center;gap:15px;padding:16px 30px;border-top:1px solid #294338;color:#8facaa;font-size:11px}
+.matchup-deep-dive{border:1px solid #29495e;border-radius:8px;background:#0e1b29;margin-top:3px}
+.matchup-deep-dive>summary{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px;color:#a1c4d9;font-size:10px;font-weight:800;letter-spacing:.65px;cursor:pointer;list-style:none}
+.matchup-deep-dive>summary::-webkit-details-marker{display:none}
+.matchup-deep-dive>summary span{color:#69c1d6;font-size:9px;white-space:nowrap}
+.matchup-deep-dive .nba-stat-section-label{margin:0 13px}
+.matchup-deep-dive .nba-detail-grid{padding:0 13px 15px}
+.nba-panel-actions .catalog-nba-shortcut{cursor:pointer}
+.market-cards{display:flex;flex-direction:column;gap:9px;padding:15px}
+.market-card{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(225px,1fr) auto;gap:18px;align-items:center;padding:16px 18px;border:1px solid #2b4c45;border-radius:10px;background:#0f2222}
+.market-card:hover{border-color:#438270;background:#112b28}
+.market-card-title{display:flex;flex-direction:column;min-width:0;gap:5px}
+.market-card-title .identity-top{margin:0}
+.market-card-title strong{font-size:13px;color:#e1eee7;line-height:1.45}
+.market-card-title span:not(.sport-chip){font-size:11px;color:#8ba8a1}
+.market-card-title small{font-size:9px;color:#6d938a;overflow-wrap:anywhere}
+.market-kind{background:#20303a;color:#a1b9c6;border-color:#3b5360;text-transform:uppercase}
+.market-card-prices{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.market-card-prices>div{display:flex;flex-direction:column;gap:6px}
+.market-card-prices small{font-size:9px;font-weight:800;color:#77988e;letter-spacing:.5px}
+.market-card-prices strong{font:700 16px 'Space Grotesk',sans-serif;color:#d0eee0;font-variant-numeric:tabular-nums;white-space:nowrap}
+.archive-section{border:1px solid #28394a;border-radius:10px;background:#0d1723;margin-bottom:28px;overflow:hidden}
+.archive-section>summary{display:flex;justify-content:space-between;gap:15px;cursor:pointer;padding:18px 22px;color:#a1b4c5;font-weight:800;font-size:11px;letter-spacing:.7px;list-style:none}
+.archive-section>summary span{font-size:10px;color:#748ba0;font-weight:500;letter-spacing:0}
+.archive-section>p{padding:0 22px;color:#8da3b4;font-size:11px;line-height:1.6}
+.archive-section h3{padding:16px 22px 0;color:#8fbcae;font-size:12px;letter-spacing:.5px}
+.archive-section .market-cards{padding-top:7px}
+@media(max-width:990px){.ev-card{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.ev-card-actions{grid-column:1/-1;flex-direction:row;justify-content:space-between;align-items:center}.market-card{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.market-card>.history-button{grid-column:1/-1;justify-self:start}}
+@media(max-width:700px){.workspace-tabs{gap:5px}.workspace-tabs button{padding:12px 9px}.workspace-tabs button span{font-size:9px;letter-spacing:.3px}.workspace-tabs button small{font-size:9px;line-height:1.3}.ev-card{grid-template-columns:1fr;gap:15px}.ev-card-actions{grid-column:auto}.ev-opportunities{padding:0 10px 10px}.ev-card{padding:16px}.ev-card-numbers{padding-top:10px;border-top:1px solid #2b473f}.ev-card-numbers strong{font-size:17px}.market-card{grid-template-columns:1fr;gap:15px}.market-card>.history-button{grid-column:auto;justify-self:start}.market-cards{padding:10px}.market-card{padding:15px}.list-progress{padding:14px 18px;flex-direction:column;align-items:stretch}.list-progress .history-button{text-align:center}.archive-section>summary{flex-direction:column;gap:5px}.matchup-deep-dive>summary{font-size:9px}.matchup-deep-dive>summary span{font-size:8px}}
