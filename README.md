@@ -4,6 +4,8 @@ An open-source, read-only sports market intelligence dashboard.
 
 **Status:** NBA comparison desk with an experimental, historically backtested Elo win-probability baseline; an NBA **model-versus-market value lab** for exactly matched game-winner contracts; a resumable public Kalshi Sports catalog; and sampled 30-minute market-price history. Sports discovery has **no default YES-price range, league whitelist or top-180 result cutoff**. The NBA model does **not** use market prices, lineups, or injuries and does **not** establish a verified betting edge.
 
+**Dashboard layout (v0.6):** The landing view is **Opportunities**, showing the highest illustrative NBA model-versus-Kalshi gaps as compact mobile-friendly cards (positive model estimates by default, eight at a time, with an option to include all comparisons). **NBA Research** is a separate tab with eight matchup cards at a time and details collapsed per matchup. **Market Explorer** holds the full-index sport and market-type filters, title/ticker search, YES and NO asks, and eight cards at a time. The 30-minute legacy sample groups remain available under a collapsed historical section instead of occupying the landing view. This phase uses **Kalshi as the sole market-price source**; ESPN remains the independent NBA statistics/schedule input. No external sportsbook odds service is connected.
+
 ## Stack
 
 - Angular 22 / TypeScript (static dashboard)
@@ -41,7 +43,7 @@ The tracked `apps/web/wrangler.jsonc` declares the Worker entrypoint, Angular bu
 
 ### Full Sports catalog (no price band)
 
-`GET /api/catalog` lists **all quoted prices** on standard open Kalshi Sports events. It walks the upstream `GET /events?status=open&limit=200&with_nested_markets=true` cursor without a fixed page or contract cutoff, filters for the provider's actual `category: Sports` label, and retains every recognized open contract. No minimum price, maximum price, selected-league restriction or volume ranking is applied. The dashboard provides text search over **loaded** contracts and a **Load more** button for cursor pagination. Major sport choices, including **NBA**, remain available even before that sport appears in the first page. `GET /api/catalog?sport=NBA` searches **all indexed pages** rather than filtering only the first displayed chunk; `cursor` preserves that sport selection across further pages. The NBA matchup desk also has a shortcut directly to NBA catalog results.
+`GET /api/catalog` lists **all quoted prices** on standard open Kalshi Sports events. It walks the upstream `GET /events?status=open&limit=200&with_nested_markets=true` cursor without a fixed page or contract cutoff, filters for the provider's actual `category: Sports` label, and retains every recognized open contract. No minimum price, maximum price, selected-league restriction or volume ranking is applied. The dashboard provides text search over **loaded** contracts, a client-side market-type filter, a compact eight-card display limit, and explicit **Show more** / **Load more** controls. Major sport choices, including **NBA**, remain available even before that sport appears in the first page. `GET /api/catalog?sport=NBA` searches **all indexed pages** rather than filtering only the first displayed chunk; `cursor` preserves that sport selection across further pages. The NBA matchup desk also has a shortcut directly to NBA catalog results.
 
 Once migration `0002_sports_catalog.sql` is applied, one upstream page is indexed every **two minutes**. Progress, indexed market count, last update, and whether a full traversal has completed are returned in every response. Each provider page is saved in bounded 80-contract D1 chunks; a cursor is advanced together with the chunks to avoid silently skipping pages. The newest completed traversal remains browseable while the next traversal builds. The historical quote sampler remains independent and continues every 30 minutes.
 
@@ -136,7 +138,7 @@ Only the scheduled collector stores historical points. Browser refreshes may fet
 3. **NBA model and EV research implemented:** reproducible Elo baseline, 2025–26 walk-forward holdout, empirical probability buckets, current-season updates, and exact live KXNBAGAME price-vs-model comparison with explicit fee assumptions.
 4. **Full standard Sports catalog implemented:** unbounded cursor traversal across scheduled invocations, coverage accounting, D1 paging, all YES prices, sport/search controls. Remaining: multivariate-market support, deeper sport taxonomy, live quote refresh and robust data-source contracts.
 5. Sport-specific, lineup-aware and championship models, with prospective calibration monitoring.
-6. Remaining: external sportsbook odds comparisons, exact execution/size-aware fee and slippage estimates, honest prospective EV backtesting, and published forecast/outcome logs (including losses and data gaps).
+6. Remaining: Kalshi-only opportunity improvements, exact execution/size-aware fee and slippage estimates, honest prospective EV backtesting, and published forecast/outcome logs (including losses and data gaps). External sportsbook odds comparisons are deferred by scope decision.
 
 ## License
 
