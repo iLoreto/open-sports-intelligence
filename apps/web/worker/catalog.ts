@@ -180,7 +180,7 @@ function parseCursor(cursor: string): { mode: 'indexed' | 'live'; runId: string 
   return { mode: 'indexed', runId: match[1], page: Number(match[2]), chunk: Number(match[3]), upstream: '' };
 }
 
-async function indexedCatalog(db: RadarDatabase, cursor: ReturnType<typeof parseCursor>): Promise<CatalogResponse | null> {
+async function indexedCatalog(db: RadarDatabase, cursor: ReturnType<typeof parseCursor>, sport: string | null): Promise<CatalogResponse | null> {
   const [completed, building] = await Promise.all([
     db.prepare(`SELECT * FROM sports_catalog_runs WHERE status='complete'
       ORDER BY completed_at DESC LIMIT 1`).first<CatalogRun>(),
@@ -195,8 +195,10 @@ async function indexedCatalog(db: RadarDatabase, cursor: ReturnType<typeof parse
   const { results } = await db.prepare(`SELECT page_index, chunk_index, fetched_at, payload
     FROM sports_catalog_pages WHERE run_id = ? AND
     (page_index > ? OR (page_index = ? AND chunk_index > ?))
+    ${sport ? 'AND instr(payload, ?) > 0' : ''}
     ORDER BY page_index ASC, chunk_index ASC LIMIT ?`)
-    .bind(run.id, cursor.page, cursor.page, cursor.chunk, CHUNKS_PER_RESPONSE + 1)
+    .bind(run.id, cursor.page, cursor.page, cursor.chunk,
+      ...(sport ? [`"sport":"${sport}"`] : []), CHUNKS_PER_RESPONSE + 1)
     .all<CatalogPage>();
   const visible = results.slice(0, CHUNKS_PER_RESPONSE);
   const last = visible.at(-1);
@@ -205,28 +207,32 @@ async function indexedCatalog(db: RadarDatabase, cursor: ReturnType<typeof parse
     updatedAt: run.updated_at, complete: run.status === 'complete', scanning: !!building,
     scannedPages: run.pages_scanned, scannedSportsEvents: run.sports_events,
     indexedMarkets: run.markets_found,
-    markets: visible.flatMap((row) => JSON.parse(row.payload) as ScanMarket[]),
+    markets: visible.flatMap((row) => (JSON.parse(row.payload) as ScanMarket[])
+      .filter((market) => !sport || market.sport === sport)),
     nextCursor: results.length > CHUNKS_PER_RESPONSE && last
       ? `db:${run.id}:${last.page_index}:${last.chunk_index}` : null,
     warnings: [
       ...(!completed ? ['First full-book traversal is still building. More contracts appear as the cursor advances.'] : []),
+      ...(sport && !visible.length && run.status === 'building' ? [`No ${sport} contracts have been indexed yet. Try refreshing as the scan advances.`] : []),
       ...(run.last_error ? [`Latest traversal paused: ${run.last_error}`] : []),
       'Sports category excludes Kalshi multivariate combo events; those require a separate endpoint.'
     ]
   };
 }
 
-async function liveCatalog(cursor: string): Promise<CatalogResponse> {
+async function liveCatalog(cursor: string, sport: string | null): Promise<CatalogResponse> {
   const page = await fetchEvents(cursor);
   const normalized = normalizeSportsPage(page);
   return {
     source: 'Kalshi public Sports events', mode: 'live', scanId: null,
     updatedAt: new Date().toISOString(), complete: !page.cursor, scanning: false,
     scannedPages: 1, scannedSportsEvents: normalized.sportsEvents,
-    indexedMarkets: normalized.markets.length, markets: normalized.markets,
+    indexedMarkets: normalized.markets.length,
+    markets: normalized.markets.filter((market) => !sport || market.sport === sport),
     nextCursor: page.cursor ? `live:${page.cursor}` : null,
     warnings: [
       'Live pagination is not a completed full-book snapshot. Continue loading to traverse the public event catalog.',
+      ...(sport ? [`The ${sport} filter applies to each provider page. Continue loading to search later pages.`] : []),
       'Multivariate combo events are excluded from this standard-events feed.'
     ]
   };
@@ -234,6 +240,11 @@ async function liveCatalog(cursor: string): Promise<CatalogResponse> {
 
 export async function handleSportsCatalog(request: Request, db?: RadarDatabase): Promise<Response> {
   const url = new URL(request.url);
+  const rawSport = (url.searchParams.get('sport') ?? '').trim().toUpperCase();
+  if (rawSport && rawSport !== 'ALL' && !/^[A-Z0-9 /-]{1,32}$/.test(rawSport)) {
+    return Response.json({ error: 'Invalid sport filter' }, { status: 400 });
+  }
+  const sport = rawSport && rawSport !== 'ALL' ? rawSport : null;
   const rawCursor = url.searchParams.get('cursor') ?? '';
   let cursor: ReturnType<typeof parseCursor>;
   try { cursor = parseCursor(rawCursor); }
@@ -242,7 +253,7 @@ export async function handleSportsCatalog(request: Request, db?: RadarDatabase):
   try {
     if (db && !live) {
       try {
-        const indexed = await indexedCatalog(db, cursor);
+        const indexed = await indexedCatalog(db, cursor, sport);
         if (indexed) return Response.json(indexed, { headers: { 'Cache-Control': 'no-store' } });
         if (cursor.runId) return Response.json({ error: 'This catalog traversal has expired. Restart browsing from the first page.' }, { status: 410 });
       } catch (error) {
@@ -251,7 +262,7 @@ export async function handleSportsCatalog(request: Request, db?: RadarDatabase):
       }
     }
     if (cursor.runId) return Response.json({ error: 'Indexed catalog is unavailable. Restart browsing from the first page.' }, { status: 410 });
-    return Response.json(await liveCatalog(cursor.upstream), { headers: { 'Cache-Control': 'no-store' } });
+    return Response.json(await liveCatalog(cursor.upstream, sport), { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     const status = error instanceof KalshiCatalogError && error.status === 429 ? 503 : 502;
     return Response.json({ error: 'Sports catalog temporarily unavailable', detail: error instanceof Error ? error.message : 'Unknown upstream failure' },

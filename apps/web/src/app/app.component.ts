@@ -45,7 +45,7 @@ const REFRESH_MS = 30 * 60 * 1000;
             <h2>Side-by-side comparisons <span class="heading-count">{{ nba()?.games?.length ?? '—' }}</span></h2>
             <p>Season form, recent meetings, reported injuries and experimental pregame Elo estimates.</p>
           </div>
-          <span class="panel-pill nba-pill">2026–27 SEASON</span>
+          <div class="nba-panel-actions"><a class="catalog-nba-shortcut" href="#sports-catalog" (click)="selectCatalogSport('NBA')">VIEW NBA MARKETS ↗</a><span class="panel-pill nba-pill">2026–27 SEASON</span></div>
         </div>
         <p *ngIf="nbaLoading() && !nba()" class="nba-state">Loading NBA schedules, standings and injury reports…</p>
         <div *ngIf="nbaError()" class="nba-warning" role="alert">NBA feed: {{ nbaError() }}<span *ngIf="nba()"> Previously loaded comparisons are shown below; check the update time.</span></div>
@@ -127,7 +127,7 @@ const REFRESH_MS = 30 * 60 * 1000;
         </ng-container>
       </section>
 
-      <section class="radar-panel catalog-panel" aria-label="Full Kalshi Sports catalog">
+      <section class="radar-panel catalog-panel" id="sports-catalog" aria-label="Full Kalshi Sports catalog">
         <div class="panel-heading">
           <div>
             <div class="section-kicker">01 / FULL SPORTS BOOK</div>
@@ -148,16 +148,16 @@ const REFRESH_MS = 30 * 60 * 1000;
             <input type="search" [value]="catalogQuery()" (input)="catalogQuery.set($any($event.target).value)" placeholder="Team, title, ticker…" aria-label="Search loaded Sports contracts" />
           </label>
           <label class="catalog-control-label">SPORT
-            <select [value]="catalogSport()" (change)="catalogSport.set($any($event.target).value)" aria-label="Filter loaded contracts by sport">
+            <select [value]="catalogSport()" (change)="selectCatalogSport($any($event.target).value)" aria-label="Filter indexed Sports contracts by sport">
               <option value="ALL">ALL SPORTS</option>
               <option *ngFor="let sport of catalogSports()" [value]="sport">{{ sport }}</option>
             </select>
           </label>
           <div class="catalog-filter-count">{{ catalogFiltered().length }} matching / {{ catalogMarkets().length }} loaded</div>
         </div>
-        <ng-container *ngTemplateOutlet="marketsTable; context: { rows: catalogFiltered(), empty: catalogLoading() ? 'Fetching Sports markets…' : 'No matching markets loaded yet. Clear the filters or load more pages.' }"></ng-container>
+        <ng-container *ngTemplateOutlet="marketsTable; context: { rows: catalogFiltered(), empty: catalogLoading() ? 'Fetching Sports markets…' : catalogEmpty() }"></ng-container>
         <div class="catalog-load" *ngIf="catalogCursor() || catalogLoading()">
-          <span>Search and sport filters apply to loaded contracts. Load more to extend the visible book.</span>
+          <span>Sport selection searches indexed pages; text search applies to results loaded on this screen.</span>
           <button class="refresh-button" type="button" (click)="loadMoreCatalog()" [disabled]="catalogLoading() || !catalogCursor()">{{ catalogLoading() ? 'LOADING…' : 'LOAD MORE CONTRACTS' }}</button>
         </div>
         <p class="catalog-footer">An indexed traversal takes time and is not a simultaneous order-book snapshot. Quotes may change while the scan runs. This panel does not calculate EV without a matched independent forecast.</p>
@@ -269,7 +269,10 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly catalogError = signal<string | null>(null);
   readonly catalogQuery = signal('');
   readonly catalogSport = signal('ALL');
-  readonly catalogSports = computed(() => [...new Set(this.catalogMarkets().map((market) => market.sport))].sort());
+  readonly catalogSports = computed(() => [...new Set([
+    'NBA', 'WNBA', 'NFL', 'NHL', 'MLB', 'SOCCER', 'UFC', 'F1', 'OTHER SPORTS',
+    ...this.catalogMarkets().map((market) => market.sport)
+  ])].sort());
   readonly catalogFiltered = computed(() => {
     const query = this.catalogQuery().trim().toLowerCase();
     const sport = this.catalogSport();
@@ -278,6 +281,11 @@ export class AppComponent implements OnInit, OnDestroy {
       (!query || [market.title, market.eventTitle, market.ticker, market.sport].some((value) => value.toLowerCase().includes(query)))
     );
   });
+  readonly catalogEmpty = computed(() => this.catalogQuery().trim()
+    ? 'No loaded contracts match this search. Clear the text filter or load more.'
+    : this.catalogSport() !== 'ALL'
+      ? `No ${this.catalogSport()} contracts found in indexed pages yet. Refresh as the scan progresses.`
+      : 'No matching markets loaded yet. Clear the search or load more pages.');
   readonly nba = signal<NbaComparisonResponse | null>(null);
   readonly nbaLoading = signal(false);
   readonly nbaError = signal<string | null>(null);
@@ -400,7 +408,8 @@ export class AppComponent implements OnInit, OnDestroy {
     this.catalogLoading.set(true);
     this.catalogError.set(null);
     try {
-      const response = await fetch('/api/catalog', { cache: 'no-store' });
+      const filter = this.catalogSport() === 'ALL' ? '' : `?sport=${encodeURIComponent(this.catalogSport())}`;
+      const response = await fetch(`/api/catalog${filter}`, { cache: 'no-store' });
       if (!response.ok) throw new Error(`HTTP ${response.status}; retry later.`);
       const data: SportsCatalogResponse = await response.json();
       if (!Array.isArray(data?.markets) || !Array.isArray(data?.warnings)) throw new Error('Unexpected Sports catalog response.');
@@ -415,6 +424,19 @@ export class AppComponent implements OnInit, OnDestroy {
     }
   }
 
+  selectCatalogSport(sport: string): void {
+    if (this.catalogSport() === sport && this.catalog()) return;
+    // Cancel an outstanding catalog request; results from a previous filter
+    // must not silently overwrite a newly selected sport.
+    this.catalogRequestId++;
+    this.catalogLoading.set(false);
+    this.catalogSport.set(sport);
+    this.catalog.set(null);
+    this.catalogMarkets.set([]);
+    this.catalogCursor.set(null);
+    void this.refreshCatalog();
+  }
+
   async loadMoreCatalog(): Promise<void> {
     const cursor = this.catalogCursor();
     if (this.catalogLoading() || !cursor) return;
@@ -422,7 +444,9 @@ export class AppComponent implements OnInit, OnDestroy {
     this.catalogLoading.set(true);
     this.catalogError.set(null);
     try {
-      const response = await fetch(`/api/catalog?cursor=${encodeURIComponent(cursor)}`, { cache: 'no-store' });
+      const params = new URLSearchParams({ cursor });
+      if (this.catalogSport() !== 'ALL') params.set('sport', this.catalogSport());
+      const response = await fetch(`/api/catalog?${params.toString()}`, { cache: 'no-store' });
       if (!response.ok) throw new Error(`HTTP ${response.status}; retry later.`);
       const data: SportsCatalogResponse = await response.json();
       if (!Array.isArray(data?.markets) || !Array.isArray(data?.warnings)) throw new Error('Unexpected Sports catalog page.');
