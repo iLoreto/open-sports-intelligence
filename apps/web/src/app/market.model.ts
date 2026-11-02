@@ -154,3 +154,41 @@ export interface NbaComparisonResponse {
   notes: string[];
   model?: NbaEloMetadata;
 }
+
+export interface NbaEvOffer {
+  team: string;
+  outcome: 'home' | 'away';
+  side: 'YES' | 'NO';
+  ticker: string;
+  yesMarketTeam: string;
+  ask: number;
+  modelProbability: number;
+  grossEdge: number;
+  feePerContract: number | null;
+  illustrativeNetEv: number | null;
+  breakEvenProbability: number | null;
+  volume24h: number;
+}
+
+export interface NbaEvGame {
+  gameId: string;
+  eventTicker: string;
+  startTime: string;
+  away: string;
+  home: string;
+  modelHomeProbability: number;
+  offers: NbaEvOffer[];
+}
+
+export interface NbaEvResponse {
+  source: 'ESPN NBA schedule, experimental Elo, Kalshi public KXNBAGAME quotes';
+  fetchedAt: string;
+  horizonDays: number;
+  model: { available: boolean; name: string; validationBrier: number; validationGames: number; message: string };
+  fees: { feeType: string | null; multiplier: number | null; standardRate: number; illustrativeContracts: number; description: string };
+  games: NbaEvGame[];
+  offers: Array<NbaEvOffer & { gameId: string; eventTicker: string; away: string; home: string; startTime: string }>;
+  unmatched: Array<{ away: string; home: string; startTime: string; reason: string }>;
+  counts: { scheduledGames: number; matchedGames: number; comparedOffers: number; marketPages: number; partialMarketCoverage: boolean };
+  warnings: string[];
+}
