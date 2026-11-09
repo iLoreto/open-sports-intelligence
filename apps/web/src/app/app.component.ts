@@ -37,7 +37,14 @@ interface Comparison { source: string; fetchedAt: string; sample: number; left: 
     </section></ng-container>
     <section class="panel" *ngIf="tab() === 'markets'"><div class="eyebrow">MANUAL MARKET RESEARCH</div><h2>Market Scanner</h2><p>Select a provider and press Scan to retrieve a new market snapshot. No scheduled scans or automatic refresh.</p>
       <div class="sports"><button [class.selected]="provider() === 'kalshi'" (click)="chooseProvider('kalshi')">Kalshi</button><button [class.selected]="provider() === 'novig'" (click)="chooseProvider('novig')">Novig</button></div>
-      <div class="columns"><label>Minimum ask (¢)<input type="number" min="1" max="99" step="1" [value]="minPrice()" (input)="minPrice.set(+$any($event.target).value)" /></label><label>Maximum ask (¢)<input type="number" min="1" max="99" step="1" [value]="maxPrice()" (input)="maxPrice.set(+$any($event.target).value)" /></label></div>
+      <div class="range-header"><strong>Ask price range</strong><strong>{{ minPrice() }}¢ – {{ maxPrice() }}¢</strong></div>
+      <div class="range-control" role="group" aria-label="Contract price range">
+        <label for="min-ask">Minimum: {{ minPrice() }}¢</label>
+        <input id="min-ask" type="range" min="1" [max]="maxPrice()" step="1" [value]="minPrice()" (input)="setMinPrice(+$any($event.target).value)" />
+        <label for="max-ask">Maximum: {{ maxPrice() }}¢</label>
+        <input id="max-ask" type="range" [min]="minPrice()" max="99" step="1" [value]="maxPrice()" (input)="setMaxPrice(+$any($event.target).value)" />
+        <div class="range-scale"><span>1¢</span><span>99¢</span></div>
+      </div>
       <p class="hint">Sports markets only. Matches either YES or NO contracts whose current ask is within the inclusive range.</p>
       <p *ngIf="!validPriceRange()" class="error">Enter a valid range between 1¢ and 99¢, with minimum ≤ maximum.</p>
       <p *ngIf="provider() === 'novig'" class="hint">Novig integration is not configured yet.</p>
@@ -55,6 +62,7 @@ interface Comparison { source: string; fetchedAt: string; sample: number; left: 
     button,select,input{font:inherit;border:1px solid #354359;border-radius:10px;padding:12px 14px;background:#18263a;color:#f5f8fd}input{width:100%;box-sizing:border-box;margin-top:8px}button{cursor:pointer}button.selected{border-color:#69d8d0;background:#123b45}button:disabled{opacity:.55;cursor:default}
     .panel{background:#111d2d;border:1px solid #29394e;border-radius:16px;padding:24px;margin-bottom:18px}label{display:block;margin:16px 0 7px;font-size:13px;color:#c3d0df}select{display:block;width:100%;box-sizing:border-box;margin-top:8px}
     .columns{display:grid;grid-template-columns:1fr 1fr;gap:18px}.run{width:100%;background:#69d8d0;color:#08242c;border:0;font-weight:800;margin-top:22px}.hint,.meta{font-size:13px}.error{color:#ffaaa6}.stats{padding:15px;background:#172538;border-radius:10px}
+    .range-header{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-top:22px}.range-control{padding:12px 16px;background:#172538;border:1px solid #354359;border-radius:12px;margin-top:12px}.range-control label{margin:12px 0 5px}.range-control input[type=range]{width:100%;height:30px;padding:0;margin:0;accent-color:#69d8d0;cursor:pointer;background:transparent;border:0}.range-scale{display:flex;justify-content:space-between;font-size:12px;color:#a9b7cc}
     .stats p{font-size:14px;border-bottom:1px solid #29394e;padding-bottom:6px}@media(max-width:650px){.columns{grid-template-columns:1fr}}
   `]
 })
@@ -62,6 +70,9 @@ export class AppComponent {
   readonly tab = signal<'research' | 'markets'>('research');
   readonly provider = signal<'kalshi' | 'novig'>('kalshi');
   readonly minPrice = signal(55); readonly maxPrice = signal(70);
+  setMinPrice(value: number): void { if (Number.isInteger(value)) { this.minPrice.set(Math.max(1, Math.min(value, this.maxPrice()))); this.invalidateScan(); } }
+  setMaxPrice(value: number): void { if (Number.isInteger(value)) { this.maxPrice.set(Math.min(99, Math.max(value, this.minPrice()))); this.invalidateScan(); } }
+  private invalidateScan(): void { this.scanId++; this.scanLoading.set(false); this.scanError.set(''); this.scanResult.set(null); }
   validPriceRange(): boolean { const a = this.minPrice(), b = this.maxPrice(); return Number.isInteger(a) && Number.isInteger(b) && a >= 1 && b <= 99 && a <= b; }
   readonly scanLoading = signal(false); readonly scanError = signal(''); readonly scanResult = signal<ScanResult | null>(null);
   private scanId = 0;
