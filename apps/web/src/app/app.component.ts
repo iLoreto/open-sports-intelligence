@@ -79,11 +79,13 @@ interface Comparison { source: string; fetchedAt: string; sample: number; left: 
     .dual-range input[type=range]:focus-visible{outline:2px solid #a2eee7;outline-offset:5px}
     .dual-range input[type=range]:first-of-type{z-index:2}
     .dual-range input[type=range]:last-of-type{z-index:3}
-    .market-result{display:block;text-decoration:none;color:inherit;margin-top:10px;border:1px solid #354359;transition:border-color .15s,background .15s}.market-result:hover,.market-result:focus-visible{border-color:#69d8d0;background:#20354a;outline-offset:2px}.market-result strong{color:#85e6dc}\n    .stats p{font-size:14px;border-bottom:1px solid #29394e;padding-bottom:6px}@media(max-width:650px){.columns{grid-template-columns:1fr}}
+    .market-result{display:block;text-decoration:none;color:inherit;margin-top:10px;border:1px solid #354359;transition:border-color .15s,background .15s}.market-result:hover,.market-result:focus-visible{border-color:#69d8d0;background:#20354a;outline-offset:2px}.market-result strong{color:#85e6dc}
+    .stats p{font-size:14px;border-bottom:1px solid #29394e;padding-bottom:6px}@media(max-width:650px){.columns{grid-template-columns:1fr}}
   `]
 })
 export class AppComponent {
-  marketUrl(m: Market): string { return 'https://kalshi.com/markets/' + encodeURIComponent(m.ticker.toLowerCase()); }\n  readonly tab = signal<'research' | 'markets'>('research');
+  marketUrl(m: Market): string { return 'https://kalshi.com/markets/' + encodeURIComponent(m.ticker.toLowerCase()); }
+  readonly tab = signal<'research' | 'markets'>('research');
   readonly provider = signal<'kalshi' | 'novig'>('kalshi');
   readonly minPrice = signal(50); readonly maxPrice = signal(72);
   setMinPrice(value: number): void { if (Number.isInteger(value)) { this.minPrice.set(Math.max(1, Math.min(value, this.maxPrice()))); this.invalidateScan(); } }
