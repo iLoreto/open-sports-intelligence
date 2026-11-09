@@ -39,10 +39,12 @@ interface Comparison { source: string; fetchedAt: string; sample: number; left: 
       <div class="sports"><button [class.selected]="provider() === 'kalshi'" (click)="chooseProvider('kalshi')">Kalshi</button><button [class.selected]="provider() === 'novig'" (click)="chooseProvider('novig')">Novig</button></div>
       <div class="range-header"><strong>Ask price range</strong><strong>{{ minPrice() }}¢ – {{ maxPrice() }}¢</strong></div>
       <div class="range-control" role="group" aria-label="Contract price range">
-        <label for="min-ask">Minimum: {{ minPrice() }}¢</label>
-        <input id="min-ask" type="range" min="1" [max]="maxPrice()" step="1" [value]="minPrice()" (input)="setMinPrice(+$any($event.target).value)" />
-        <label for="max-ask">Maximum: {{ maxPrice() }}¢</label>
-        <input id="max-ask" type="range" [min]="minPrice()" max="99" step="1" [value]="maxPrice()" (input)="setMaxPrice(+$any($event.target).value)" />
+        <div class="range-values"><label for="min-ask">Minimum: {{ minPrice() }}¢</label><label for="max-ask">Maximum: {{ maxPrice() }}¢</label></div>
+        <div class="dual-range" [style.--range-start.%]="(minPrice() - 1) / 98 * 100" [style.--range-end.%]="(maxPrice() - 1) / 98 * 100">
+          <div class="dual-range-track"></div>
+          <input id="min-ask" aria-label="Minimum ask price" type="range" min="1" max="99" step="1" [value]="minPrice()" (input)="setMinPrice(+$any($event.target).value)" />
+          <input id="max-ask" aria-label="Maximum ask price" type="range" min="1" max="99" step="1" [value]="maxPrice()" (input)="setMaxPrice(+$any($event.target).value)" />
+        </div>
         <div class="range-scale"><span>1¢</span><span>99¢</span></div>
       </div>
       <p class="hint">Sports markets only. Matches either YES or NO contracts whose current ask is within the inclusive range.</p>
@@ -62,14 +64,28 @@ interface Comparison { source: string; fetchedAt: string; sample: number; left: 
     button,select,input{font:inherit;border:1px solid #354359;border-radius:10px;padding:12px 14px;background:#18263a;color:#f5f8fd}input{width:100%;box-sizing:border-box;margin-top:8px}button{cursor:pointer}button.selected{border-color:#69d8d0;background:#123b45}button:disabled{opacity:.55;cursor:default}
     .panel{background:#111d2d;border:1px solid #29394e;border-radius:16px;padding:24px;margin-bottom:18px}label{display:block;margin:16px 0 7px;font-size:13px;color:#c3d0df}select{display:block;width:100%;box-sizing:border-box;margin-top:8px}
     .columns{display:grid;grid-template-columns:1fr 1fr;gap:18px}.run{width:100%;background:#69d8d0;color:#08242c;border:0;font-weight:800;margin-top:22px}.hint,.meta{font-size:13px}.error{color:#ffaaa6}.stats{padding:15px;background:#172538;border-radius:10px}
-    .range-header{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-top:22px}.range-control{padding:12px 16px;background:#172538;border:1px solid #354359;border-radius:12px;margin-top:12px}.range-control label{margin:12px 0 5px}.range-control input[type=range]{width:100%;height:30px;padding:0;margin:0;accent-color:#69d8d0;cursor:pointer;background:transparent;border:0}.range-scale{display:flex;justify-content:space-between;font-size:12px;color:#a9b7cc}
+    .range-header{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-top:22px}
+    .range-control{padding:14px 18px;background:#172538;border:1px solid #354359;border-radius:12px;margin-top:12px}
+    .range-values,.range-scale{display:flex;justify-content:space-between;gap:12px}
+    .range-values label{margin:0 0 12px;font-size:13px}
+    .range-scale{font-size:12px;color:#a9b7cc;margin-top:9px}
+    .dual-range{position:relative;height:32px;display:flex;align-items:center}
+    .dual-range-track{height:7px;width:100%;border-radius:999px;background:linear-gradient(to right,#354359 0%,#354359 var(--range-start),#69d8d0 var(--range-start),#69d8d0 var(--range-end),#354359 var(--range-end),#354359 100%)}
+    .dual-range input[type=range]{position:absolute;left:0;top:0;width:100%;height:32px;margin:0;padding:0;border:0;background:transparent;appearance:none;-webkit-appearance:none;pointer-events:none;cursor:pointer}
+    .dual-range input[type=range]::-webkit-slider-runnable-track{height:7px;background:transparent}
+    .dual-range input[type=range]::-moz-range-track{height:7px;background:transparent}
+    .dual-range input[type=range]::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;width:22px;height:22px;border-radius:50%;background:#69d8d0;border:3px solid #0c1728;box-shadow:0 0 0 1px #a2eee7;pointer-events:auto;margin-top:-7.5px}
+    .dual-range input[type=range]::-moz-range-thumb{width:17px;height:17px;border-radius:50%;background:#69d8d0;border:3px solid #0c1728;pointer-events:auto}
+    .dual-range input[type=range]:focus-visible{outline:2px solid #a2eee7;outline-offset:5px}
+    .dual-range input[type=range]:first-of-type{z-index:2}
+    .dual-range input[type=range]:last-of-type{z-index:3}
     .stats p{font-size:14px;border-bottom:1px solid #29394e;padding-bottom:6px}@media(max-width:650px){.columns{grid-template-columns:1fr}}
   `]
 })
 export class AppComponent {
   readonly tab = signal<'research' | 'markets'>('research');
   readonly provider = signal<'kalshi' | 'novig'>('kalshi');
-  readonly minPrice = signal(55); readonly maxPrice = signal(70);
+  readonly minPrice = signal(50); readonly maxPrice = signal(72);
   setMinPrice(value: number): void { if (Number.isInteger(value)) { this.minPrice.set(Math.max(1, Math.min(value, this.maxPrice()))); this.invalidateScan(); } }
   setMaxPrice(value: number): void { if (Number.isInteger(value)) { this.maxPrice.set(Math.min(99, Math.max(value, this.minPrice()))); this.invalidateScan(); } }
   private invalidateScan(): void { this.scanId++; this.scanLoading.set(false); this.scanError.set(''); this.scanResult.set(null); }
