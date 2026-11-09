@@ -3,13 +3,16 @@ import { Component, signal } from '@angular/core';
 type Sport = 'nba' | 'tennis';
 interface Team { id: number; full_name: string; abbreviation?: string }
 interface Stats { games: number; wins: number; losses: number; pointsFor: number | null; pointsAgainst: number | null; recent: { date: string; scored: number; allowed: number; win: boolean }[] }
+interface Market { ticker: string; event: string; title: string; yesBid: string | null; yesAsk: string | null; noAsk: string | null; last: string | null; volume24h: string | null }
+interface ScanResult { source: string; scannedAt: string; markets: Market[]; partialCoverage: boolean; note: string }
 interface Comparison { source: string; fetchedAt: string; sample: number; left: Stats; right: Stats; partial: boolean; note: string }
 @Component({
   selector: 'osi-root', standalone: true, imports: [CommonModule],
   template: `
   <main class="workbench">
     <header><div class="eyebrow">OPEN SPORTS INTELLIGENCE</div><h1>Sports Research Workbench</h1><p>Manual, sport-specific research. No automated scanning.</p></header>
-    <nav class="sports" aria-label="Sports"><button [class.selected]="sport() === 'nba'" (click)="chooseSport('nba')">🏀 NBA</button><button [class.selected]="sport() === 'tennis'" (click)="chooseSport('tennis')">🎾 Tennis</button></nav>
+    <nav class="sports" aria-label="Workspaces"><button [class.selected]="tab() === 'research'" (click)="chooseTab('research')">Research</button><button [class.selected]="tab() === 'markets'" (click)="chooseTab('markets')">Market Scanner</button></nav>
+    <ng-container *ngIf="tab() === 'research'"><nav class="sports" aria-label="Sports"><button [class.selected]="sport() === 'nba'" (click)="chooseSport('nba')">🏀 NBA</button><button [class.selected]="sport() === 'tennis'" (click)="chooseSport('tennis')">🎾 Tennis</button></nav>
     <section class="panel" *ngIf="sport() === 'nba'">
       <div class="eyebrow">BALLDONTLIE / NBA</div><h2>Team vs team</h2>
       <p>Select two teams and a historical sample. The comparison calculates completed-game win/loss and scoring averages.</p>
@@ -31,6 +34,15 @@ interface Comparison { source: string; fetchedAt: string; sample: number; left: 
           <div class="stats"><h3>{{ teamName(right()) }}</h3><p>{{ c.right.wins }}W–{{ c.right.losses }}L ({{ c.right.games }} games)</p><p>Scored: {{ c.right.pointsFor ?? '—' }} / game</p><p>Allowed: {{ c.right.pointsAgainst ?? '—' }} / game</p><p *ngFor="let g of c.right.recent">{{ g.date | date:'shortDate' }} · {{ g.scored }}–{{ g.allowed }} · {{ g.win ? 'W' : 'L' }}</p></div>
         </div><p class="hint">{{ c.note }} <strong *ngIf="c.partial">Provider pagination indicates incomplete coverage.</strong></p>
       </ng-container>
+    </section></ng-container>
+    <section class="panel" *ngIf="tab() === 'markets'"><div class="eyebrow">MANUAL MARKET RESEARCH</div><h2>Market Scanner</h2><p>Select a provider and press Scan to retrieve a new market snapshot. No scheduled scans or automatic refresh.</p>
+      <div class="sports"><button [class.selected]="provider() === 'kalshi'" (click)="chooseProvider('kalshi')">Kalshi</button><button [class.selected]="provider() === 'novig'" (click)="chooseProvider('novig')">Novig</button></div>
+      <p *ngIf="provider() === 'novig'" class="hint">Novig integration is not configured yet.</p>
+      <button class="run" [disabled]="scanLoading() || provider() === 'novig'" (click)="scan()">{{ scanLoading() ? 'Scanning…' : 'Scan now →' }}</button>
+      <p *ngIf="scanError()" class="error">{{ scanError() }}</p>
+      <ng-container *ngIf="scanResult() as result"><p class="meta">{{ result.source }} · {{ result.scannedAt | date:'medium' }} · {{ result.markets.length }} markets returned</p><p class="hint">{{ result.note }} <strong *ngIf="result.partialCoverage">More pages exist; this snapshot is incomplete.</strong></p>
+        <div *ngFor="let m of result.markets" class="stats"><strong>{{ m.event }}</strong><p>{{ m.title }} · {{ m.ticker }}</p><p>YES bid {{ m.yesBid ?? '—' }} · YES ask {{ m.yesAsk ?? '—' }} · NO ask {{ m.noAsk ?? '—' }} · Last {{ m.last ?? '—' }} · 24h volume {{ m.volume24h ?? '—' }}</p></div>
+      </ng-container>
     </section>
   </main>`,
   styles: [`
@@ -44,6 +56,23 @@ interface Comparison { source: string; fetchedAt: string; sample: number; left: 
   `]
 })
 export class AppComponent {
+  readonly tab = signal<'research' | 'markets'>('research');
+  readonly provider = signal<'kalshi' | 'novig'>('kalshi');
+  readonly scanLoading = signal(false); readonly scanError = signal(''); readonly scanResult = signal<ScanResult | null>(null);
+  private scanId = 0;
+  chooseTab(value: 'research' | 'markets'): void { this.tab.set(value); this.scanId++; this.scanLoading.set(false); this.scanError.set(''); this.scanResult.set(null); }
+  chooseProvider(value: 'kalshi' | 'novig'): void { this.provider.set(value); this.scanId++; this.scanLoading.set(false); this.scanError.set(''); this.scanResult.set(null); }
+  async scan(): Promise<void> {
+    if (this.provider() !== 'kalshi' || this.scanLoading()) return;
+    const id = ++this.scanId; this.scanLoading.set(true); this.scanError.set(''); this.scanResult.set(null);
+    try {
+      const response = await fetch('/api/markets/scan?provider=kalshi', { method: 'POST', cache: 'no-store' });
+      const body = await response.json() as ScanResult & { error?: string };
+      if (!response.ok) throw new Error(body.error || 'Market scan unavailable');
+      if (id === this.scanId && this.tab() === 'markets' && this.provider() === 'kalshi') this.scanResult.set(body);
+    } catch(e) { if (id === this.scanId) this.scanError.set(e instanceof Error ? e.message : 'Scan unavailable'); }
+    finally { if (id === this.scanId) this.scanLoading.set(false); }
+  }
   readonly sport = signal<Sport>('nba');
   readonly teams = signal<Team[]>([]);
   readonly left = signal(0); readonly right = signal(0); readonly sample = signal(10);
