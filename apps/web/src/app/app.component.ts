@@ -3,8 +3,8 @@ import { Component, signal } from '@angular/core';
 type Sport = 'nba' | 'tennis';
 interface Team { id: number; full_name: string; abbreviation?: string }
 interface Stats { games: number; wins: number; losses: number; pointsFor: number | null; pointsAgainst: number | null; recent: { date: string; scored: number; allowed: number; win: boolean }[] }
-interface Market { ticker: string; event: string; title: string; yesBid: string | null; yesAsk: string | null; noAsk: string | null; last: string | null; volume24h: string | null }
-interface ScanResult { source: string; scannedAt: string; markets: Market[]; partialCoverage: boolean; note: string }
+interface Market { ticker: string; event: string; title: string; side: 'YES' | 'NO'; askCents: number; yesBid: string | null; yesAsk: string | null; noAsk: string | null; last: string | null; volume24h: string | null }
+interface ScanResult { source: string; scannedAt: string; markets: Market[]; partialCoverage: boolean; note: string; pagesScanned: number; sportsEvents: number }
 interface Comparison { source: string; fetchedAt: string; sample: number; left: Stats; right: Stats; partial: boolean; note: string }
 @Component({
   selector: 'osi-root', standalone: true, imports: [CommonModule],
@@ -37,11 +37,14 @@ interface Comparison { source: string; fetchedAt: string; sample: number; left: 
     </section></ng-container>
     <section class="panel" *ngIf="tab() === 'markets'"><div class="eyebrow">MANUAL MARKET RESEARCH</div><h2>Market Scanner</h2><p>Select a provider and press Scan to retrieve a new market snapshot. No scheduled scans or automatic refresh.</p>
       <div class="sports"><button [class.selected]="provider() === 'kalshi'" (click)="chooseProvider('kalshi')">Kalshi</button><button [class.selected]="provider() === 'novig'" (click)="chooseProvider('novig')">Novig</button></div>
+      <div class="columns"><label>Minimum ask (¢)<input type="number" min="1" max="99" step="1" [value]="minPrice()" (input)="minPrice.set(+$any($event.target).value)" /></label><label>Maximum ask (¢)<input type="number" min="1" max="99" step="1" [value]="maxPrice()" (input)="maxPrice.set(+$any($event.target).value)" /></label></div>
+      <p class="hint">Sports markets only. Matches either YES or NO contracts whose current ask is within the inclusive range.</p>
+      <p *ngIf="!validPriceRange()" class="error">Enter a valid range between 1¢ and 99¢, with minimum ≤ maximum.</p>
       <p *ngIf="provider() === 'novig'" class="hint">Novig integration is not configured yet.</p>
-      <button class="run" [disabled]="scanLoading() || provider() === 'novig'" (click)="scan()">{{ scanLoading() ? 'Scanning…' : 'Scan now →' }}</button>
+      <button class="run" [disabled]="scanLoading() || provider() === 'novig' || !validPriceRange()" (click)="scan()">{{ scanLoading() ? 'Scanning…' : 'Scan now →' }}</button>
       <p *ngIf="scanError()" class="error">{{ scanError() }}</p>
-      <ng-container *ngIf="scanResult() as result"><p class="meta">{{ result.source }} · {{ result.scannedAt | date:'medium' }} · {{ result.markets.length }} markets returned</p><p class="hint">{{ result.note }} <strong *ngIf="result.partialCoverage">More pages exist; this snapshot is incomplete.</strong></p>
-        <div *ngFor="let m of result.markets" class="stats"><strong>{{ m.event }}</strong><p>{{ m.title }} · {{ m.ticker }}</p><p>YES bid {{ m.yesBid ?? '—' }} · YES ask {{ m.yesAsk ?? '—' }} · NO ask {{ m.noAsk ?? '—' }} · Last {{ m.last ?? '—' }} · 24h volume {{ m.volume24h ?? '—' }}</p></div>
+      <ng-container *ngIf="scanResult() as result"><p class="meta">{{ result.source }} · {{ result.scannedAt | date:'medium' }} · {{ result.markets.length }} matching contracts · {{ result.sportsEvents }} sports events across {{ result.pagesScanned }} pages</p><p class="hint">{{ result.note }} <strong *ngIf="result.partialCoverage">More pages exist; this snapshot is incomplete.</strong></p>
+        <div *ngFor="let m of result.markets" class="stats"><strong>{{ m.event }}</strong><p>{{ m.title }} · {{ m.ticker }} · {{ m.side }} ask {{ m.askCents }}¢</p><p>YES bid {{ m.yesBid ?? '—' }} · YES ask {{ m.yesAsk ?? '—' }} · NO ask {{ m.noAsk ?? '—' }} · Last {{ m.last ?? '—' }} · 24h volume {{ m.volume24h ?? '—' }}</p></div>
       </ng-container>
     </section>
   </main>`,
@@ -49,7 +52,7 @@ interface Comparison { source: string; fetchedAt: string; sample: number; left: 
     :host{display:block;min-height:100vh;background:#0b1220;color:#e7edf7;font:16px system-ui,sans-serif}
     .workbench{max-width:960px;margin:auto;padding:40px 20px 80px}header{margin-bottom:28px}h1{font-size:clamp(2rem,5vw,3.4rem);letter-spacing:-.04em;margin:10px 0}h2{margin:0 0 20px}h3{margin:0}
     p{color:#a9b7cc;line-height:1.55}.eyebrow{font-size:12px;font-weight:800;letter-spacing:.17em;color:#73d8d0}.sports{display:flex;gap:12px;margin-bottom:22px}.sports button{flex:1}
-    button,select{font:inherit;border:1px solid #354359;border-radius:10px;padding:12px 14px;background:#18263a;color:#f5f8fd}button{cursor:pointer}button.selected{border-color:#69d8d0;background:#123b45}button:disabled{opacity:.55;cursor:default}
+    button,select,input{font:inherit;border:1px solid #354359;border-radius:10px;padding:12px 14px;background:#18263a;color:#f5f8fd}input{width:100%;box-sizing:border-box;margin-top:8px}button{cursor:pointer}button.selected{border-color:#69d8d0;background:#123b45}button:disabled{opacity:.55;cursor:default}
     .panel{background:#111d2d;border:1px solid #29394e;border-radius:16px;padding:24px;margin-bottom:18px}label{display:block;margin:16px 0 7px;font-size:13px;color:#c3d0df}select{display:block;width:100%;box-sizing:border-box;margin-top:8px}
     .columns{display:grid;grid-template-columns:1fr 1fr;gap:18px}.run{width:100%;background:#69d8d0;color:#08242c;border:0;font-weight:800;margin-top:22px}.hint,.meta{font-size:13px}.error{color:#ffaaa6}.stats{padding:15px;background:#172538;border-radius:10px}
     .stats p{font-size:14px;border-bottom:1px solid #29394e;padding-bottom:6px}@media(max-width:650px){.columns{grid-template-columns:1fr}}
@@ -58,15 +61,17 @@ interface Comparison { source: string; fetchedAt: string; sample: number; left: 
 export class AppComponent {
   readonly tab = signal<'research' | 'markets'>('research');
   readonly provider = signal<'kalshi' | 'novig'>('kalshi');
+  readonly minPrice = signal(55); readonly maxPrice = signal(70);
+  validPriceRange(): boolean { const a = this.minPrice(), b = this.maxPrice(); return Number.isInteger(a) && Number.isInteger(b) && a >= 1 && b <= 99 && a <= b; }
   readonly scanLoading = signal(false); readonly scanError = signal(''); readonly scanResult = signal<ScanResult | null>(null);
   private scanId = 0;
   chooseTab(value: 'research' | 'markets'): void { this.tab.set(value); this.scanId++; this.scanLoading.set(false); this.scanError.set(''); this.scanResult.set(null); }
   chooseProvider(value: 'kalshi' | 'novig'): void { this.provider.set(value); this.scanId++; this.scanLoading.set(false); this.scanError.set(''); this.scanResult.set(null); }
   async scan(): Promise<void> {
-    if (this.provider() !== 'kalshi' || this.scanLoading()) return;
+    if (this.provider() !== 'kalshi' || this.scanLoading() || !this.validPriceRange()) return;
     const id = ++this.scanId; this.scanLoading.set(true); this.scanError.set(''); this.scanResult.set(null);
     try {
-      const response = await fetch('/api/markets/scan?provider=kalshi', { method: 'POST', cache: 'no-store' });
+      const response = await fetch('/api/markets/scan?provider=kalshi&min=' + this.minPrice() + '&max=' + this.maxPrice(), { method: 'POST', cache: 'no-store' });
       const body = await response.json() as ScanResult & { error?: string };
       if (!response.ok) throw new Error(body.error || 'Market scan unavailable');
       if (id === this.scanId && this.tab() === 'markets' && this.provider() === 'kalshi') this.scanResult.set(body);
