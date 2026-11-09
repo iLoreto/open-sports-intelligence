@@ -92,7 +92,7 @@ export default {
           seen.add(market.ticker);
           const quotes = [['YES', market.yes_ask_dollars], ['NO', market.no_ask_dollars]] as const;
           for (const [side, ask] of quotes) {
-            if (typeof ask !== 'string' || !/^\\d+(?:\\.\\d+)?$/.test(ask)) continue;
+            if (typeof ask !== 'string' || !/^\d+(?:\.\d+)?$/.test(ask)) continue;
             quotedMarkets++;
             const cents = Math.round(Number(ask) * 100);
             if (cents < min || cents > max) continue;
