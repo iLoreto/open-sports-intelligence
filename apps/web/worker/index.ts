@@ -28,23 +28,53 @@ export default {
       const provider = url.searchParams.get('provider') || 'kalshi';
       if (provider === 'novig') return json({ error: 'Novig public market-data integration is not configured yet.' }, 501);
       if (provider !== 'kalshi') return json({ error: 'Unsupported provider' }, 400);
+      const min = Number(url.searchParams.get('min') ?? '55');
+      const max = Number(url.searchParams.get('max') ?? '70');
+      if (!Number.isInteger(min) || !Number.isInteger(max) || min < 1 || max > 99 || min > max)
+        return json({ error: 'Specify a valid price range from 1 to 99 cents, minimum not exceeding maximum.' }, 400);
       try {
         // Deliberately bounded, on-demand only. No cron, D1 writes, or implicit polling.
         const endpoint = 'https://external-api.kalshi.com/trade-api/v2';
-        const response = await fetch(endpoint + '/events?status=open&limit=200&with_nested_markets=true', {
-          headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(13000)
-        });
-        if (!response.ok) throw new Error('Kalshi HTTP ' + response.status);
-        const page = await response.json() as { events?: Array<{ event_ticker?: string; title?: string; category?: string; markets?: Array<{ ticker?: string; title?: string; status?: string; yes_bid_dollars?: string; yes_ask_dollars?: string; no_ask_dollars?: string; last_price_dollars?: string; volume_24h_fp?: string }> }>; cursor?: string };
-        if (!Array.isArray(page.events)) throw new Error('Unexpected Kalshi event response');
-        const markets = page.events.filter(e => e.category?.toLowerCase() === 'sports')
-          .flatMap(e => (e.markets || []).filter(m => m.ticker && (!m.status || ['open','active'].includes(m.status)))
-            .map(m => ({ ticker: m.ticker, event: e.title || e.event_ticker || '', title: m.title || m.ticker,
-              yesBid: m.yes_bid_dollars ?? null, yesAsk: m.yes_ask_dollars ?? null,
-              noAsk: m.no_ask_dollars ?? null, last: m.last_price_dollars ?? null,
-              volume24h: m.volume_24h_fp ?? null })));
+        type Quote = { ticker?: string; title?: string; status?: string; yes_bid_dollars?: string; yes_ask_dollars?: string; no_ask_dollars?: string; last_price_dollars?: string; volume_24h_fp?: string };
+        type Event = { event_ticker?: string; title?: string; category?: string; markets?: Quote[] };
+        const markets: Array<{ ticker: string; event: string; title: string; side: 'YES' | 'NO'; askCents: number; yesBid: string | null; yesAsk: string | null; noAsk: string | null; last: string | null; volume24h: string | null }> = [];
+        let cursor = ''; let pagesScanned = 0; let sportsEvents = 0;
+        // Continue across a bounded number of event pages; filter exclusively to Sports.
+        for (let pageNumber = 0; pageNumber < 5; pageNumber++) {
+          const query = new URLSearchParams({ status: 'open', limit: '200', with_nested_markets: 'true' });
+          if (cursor) query.set('cursor', cursor);
+          const response = await fetch(endpoint + '/events?' + query.toString(), {
+            headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(13000)
+          });
+          if (!response.ok) throw new Error('Kalshi HTTP ' + response.status);
+          const page = await response.json() as { events?: Event[]; cursor?: string };
+          if (!Array.isArray(page.events)) throw new Error('Unexpected Kalshi event response');
+          pagesScanned++;
+          for (const event of page.events) {
+            if (event.category?.trim().toLowerCase() !== 'sports') continue;
+            sportsEvents++;
+            for (const market of event.markets || []) {
+              if (!market.ticker || (market.status && !['open', 'active'].includes(market.status))) continue;
+              for (const [side, ask] of [['YES', market.yes_ask_dollars], ['NO', market.no_ask_dollars]] as const) {
+                if (typeof ask !== 'string' || !/^\\d+(?:\\.\\d{1,2})?$/.test(ask)) continue;
+                const cents = Math.round(Number(ask) * 100);
+                if (cents < min || cents > max) continue;
+                markets.push({ ticker: market.ticker, event: event.title || event.event_ticker || '',
+                  title: market.title || market.ticker, side, askCents: cents,
+                  yesBid: market.yes_bid_dollars ?? null, yesAsk: market.yes_ask_dollars ?? null,
+                  noAsk: market.no_ask_dollars ?? null, last: market.last_price_dollars ?? null,
+                  volume24h: market.volume_24h_fp ?? null });
+              }
+            }
+          }
+          const next = page.cursor || '';
+          if (!next || next === cursor) { cursor = ''; break; }
+          cursor = next;
+        }
+        markets.sort((a, b) => a.askCents - b.askCents || a.event.localeCompare(b.event));
         return json({ source: 'Kalshi public API', provider, scannedAt: new Date().toISOString(),
-          markets, partialCoverage: Boolean(page.cursor), note: 'On-demand snapshot of one Kalshi events page. Not a full market index or 30-minute price history.' });
+          min, max, sportsEvents, pagesScanned, markets, partialCoverage: Boolean(cursor),
+          note: 'Sports-only, on-demand scan. Quotes are displayed by contract side (YES/NO) at the current ask. Up to five event pages are checked; additional pages may exist.' });
       } catch (e) { return json({ error: e instanceof Error ? e.message : 'Kalshi feed unavailable' }, 502); }
     }
     if (url.pathname.startsWith('/api/nba/')) {
