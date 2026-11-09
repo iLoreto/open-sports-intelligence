@@ -56,7 +56,7 @@ export default {
             for (const market of event.markets || []) {
               if (!market.ticker || (market.status && !['open', 'active'].includes(market.status))) continue;
               for (const [side, ask] of [['YES', market.yes_ask_dollars], ['NO', market.no_ask_dollars]] as const) {
-                if (typeof ask !== 'string' || !/^\\d+(?:\\.\\d{1,2})?$/.test(ask)) continue;
+                if (typeof ask !== 'string' || !/^\d+(?:\.\d{1,2})?$/.test(ask)) continue;
                 const cents = Math.round(Number(ask) * 100);
                 if (cents < min || cents > max) continue;
                 markets.push({ ticker: market.ticker, event: event.title || event.event_ticker || '',
