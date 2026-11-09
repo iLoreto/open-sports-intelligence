@@ -1,88 +1,77 @@
 import { CommonModule } from '@angular/common';
 import { Component, signal } from '@angular/core';
-
 type Sport = 'nba' | 'tennis';
-interface Game { id: number; date: string; status: string; home_team: { id: number; full_name: string }; visitor_team: { id: number; full_name: string }; home_team_score: number; visitor_team_score: number }
-interface GamesResponse { source: string; fetchedAt: string; games: Game[]; error?: string }
-
+interface Team { id: number; full_name: string; abbreviation?: string }
+interface Stats { games: number; wins: number; losses: number; pointsFor: number | null; pointsAgainst: number | null; recent: { date: string; scored: number; allowed: number; win: boolean }[] }
+interface Comparison { source: string; fetchedAt: string; sample: number; left: Stats; right: Stats; partial: boolean; note: string }
 @Component({
-  selector: 'osi-root',
-  standalone: true,
-  imports: [CommonModule],
+  selector: 'osi-root', standalone: true, imports: [CommonModule],
   template: `
-  <div class="workbench">
-    <header><div class="eyebrow">OPEN SPORTS INTELLIGENCE</div><h1>Sports Research Workbench</h1><p>Choose a sport, select what to compare, and run a research request on demand.</p></header>
-    <nav class="sports" aria-label="Sports">
-      <button [class.selected]="sport() === 'nba'" (click)="chooseSport('nba')">🏀 NBA</button>
-      <button [class.selected]="sport() === 'tennis'" (click)="chooseSport('tennis')">🎾 Tennis</button>
-    </nav>
-    <section class="panel">
-      <div class="eyebrow">{{ sport() === 'nba' ? 'BALLDONTLIE / NBA' : 'TENNIS / INDEPENDENT DATASET' }}</div>
-      <h2>What do you want to compare?</h2>
-      <label for="mode">Analysis</label>
-      <select id="mode" [value]="mode()" (change)="mode.set($any($event.target).value)">
-        <option value="matchup">{{ sport() === 'nba' ? 'Team vs team' : 'Player vs player' }}</option>
-        <option value="form">Recent form</option>
-        <option value="full">Full matchup analysis</option>
-      </select>
-      <label for="sample">Historical sample</label>
-      <select id="sample" [value]="sample()" (change)="sample.set(+$any($event.target).value)">
-        <option [value]="5">Last 5</option><option [value]="10">Last 10</option><option [value]="20">Last 20</option>
-      </select>
-      <label for="date">Date (NBA)</label>
-      <input id="date" type="date" [disabled]="sport() !== 'nba'" [value]="date()" (change)="date.set($any($event.target).value)" />
-      <button class="run" [disabled]="loading()" (click)="run()">{{ loading() ? 'Loading…' : 'Run analysis →' }}</button>
-      <p class="hint">No background scanning. Results are fetched only when requested.</p>
+  <main class="workbench">
+    <header><div class="eyebrow">OPEN SPORTS INTELLIGENCE</div><h1>Sports Research Workbench</h1><p>Manual, sport-specific research. No automated scanning.</p></header>
+    <nav class="sports" aria-label="Sports"><button [class.selected]="sport() === 'nba'" (click)="chooseSport('nba')">🏀 NBA</button><button [class.selected]="sport() === 'tennis'" (click)="chooseSport('tennis')">🎾 Tennis</button></nav>
+    <section class="panel" *ngIf="sport() === 'nba'">
+      <div class="eyebrow">BALLDONTLIE / NBA</div><h2>Team vs team</h2>
+      <p>Select two teams and a historical sample. The comparison calculates completed-game win/loss and scoring averages.</p>
+      <div class="columns">
+        <label>Team A<select [value]="left()" (change)="left.set(+$any($event.target).value)"><option [value]="0">Select team</option><option *ngFor="let team of teams()" [value]="team.id">{{ team.full_name }}</option></select></label>
+        <label>Team B<select [value]="right()" (change)="right.set(+$any($event.target).value)"><option [value]="0">Select team</option><option *ngFor="let team of teams()" [value]="team.id">{{ team.full_name }}</option></select></label>
+      </div>
+      <label>Completed games to compare<select [value]="sample()" (change)="sample.set(+$any($event.target).value)"><option [value]="5">Last 5</option><option [value]="10">Last 10</option><option [value]="20">Last 20</option></select></label>
+      <button class="run" [disabled]="loading() || !left() || !right() || left() === right()" (click)="run()">{{ loading() ? 'Loading…' : 'Run comparison →' }}</button>
+      <p class="hint">Scores and team-level form only. Player, injury, and advanced matchup analyses will be enabled when their data integrations are implemented.</p>
     </section>
-    <section class="panel" aria-live="polite">
-      <h2>Results</h2>
-      <p *ngIf="error()" class="error">{{ error() }}</p>
-      <p *ngIf="!loading() && !result() && !error()" class="hint">Run an analysis to retrieve sourced results.</p>
-      <ng-container *ngIf="result() as data">
-        <p class="meta">{{ data.source }} · Retrieved {{ data.fetchedAt | date:'medium' }} · {{ data.games.length }} games</p>
-        <p *ngIf="!data.games.length">No games returned for this date.</p>
-        <div class="game" *ngFor="let game of data.games">
-          <strong>{{ game.visitor_team.full_name }} vs {{ game.home_team.full_name }}</strong>
-          <span>{{ game.status }} · {{ game.visitor_team_score }}–{{ game.home_team_score }}</span>
-        </div>
-        <p class="hint">Team/player historical comparisons require additional licensed statistics endpoints. No inferred values are displayed.</p>
+    <section class="panel" *ngIf="sport() === 'tennis'"><div class="eyebrow">TENNIS / ATP · WTA · CHALLENGER</div><h2>Tennis research</h2><p>The tennis provider is not yet configured. Player comparison controls will be enabled after verifying tournament coverage and historical statistics.</p></section>
+    <section class="panel" aria-live="polite"><h2>Results</h2>
+      <p *ngIf="error()" class="error">{{ error() }}</p><p *ngIf="loading()">Retrieving provider data…</p>
+      <p *ngIf="!loading() && !comparison() && !error()" class="hint">Choose two NBA teams and run a comparison.</p>
+      <ng-container *ngIf="comparison() as c"><p class="meta">{{ c.source }} · {{ c.fetchedAt | date:'medium' }} · Last {{ c.sample }} games requested</p>
+        <div class="columns">
+          <div class="stats"><h3>{{ teamName(left()) }}</h3><p>{{ c.left.wins }}W–{{ c.left.losses }}L ({{ c.left.games }} games)</p><p>Scored: {{ c.left.pointsFor ?? '—' }} / game</p><p>Allowed: {{ c.left.pointsAgainst ?? '—' }} / game</p><p *ngFor="let g of c.left.recent">{{ g.date | date:'shortDate' }} · {{ g.scored }}–{{ g.allowed }} · {{ g.win ? 'W' : 'L' }}</p></div>
+          <div class="stats"><h3>{{ teamName(right()) }}</h3><p>{{ c.right.wins }}W–{{ c.right.losses }}L ({{ c.right.games }} games)</p><p>Scored: {{ c.right.pointsFor ?? '—' }} / game</p><p>Allowed: {{ c.right.pointsAgainst ?? '—' }} / game</p><p *ngFor="let g of c.right.recent">{{ g.date | date:'shortDate' }} · {{ g.scored }}–{{ g.allowed }} · {{ g.win ? 'W' : 'L' }}</p></div>
+        </div><p class="hint">{{ c.note }} <strong *ngIf="c.partial">Provider pagination indicates incomplete coverage.</strong></p>
       </ng-container>
     </section>
-  </div>`,
+  </main>`,
   styles: [`
     :host{display:block;min-height:100vh;background:#0b1220;color:#e7edf7;font:16px system-ui,sans-serif}
-    .workbench{max-width:960px;margin:auto;padding:40px 20px 80px}header{margin-bottom:28px}
-    h1{font-size:clamp(2rem,5vw,3.4rem);letter-spacing:-.04em;margin:10px 0}h2{margin:0 0 22px}
-    p{color:#a9b7cc;line-height:1.55}.eyebrow{font-size:12px;font-weight:800;letter-spacing:.17em;color:#73d8d0}
-    .sports{display:flex;gap:12px;margin-bottom:22px}.sports button{flex:1}
-    button,select,input{font:inherit;border:1px solid #354359;border-radius:10px;padding:12px 14px;background:#18263a;color:#f5f8fd}
-    button{cursor:pointer}button.selected{border-color:#69d8d0;background:#123b45}button:disabled{opacity:.55;cursor:default}
-    .panel{background:#111d2d;border:1px solid #29394e;border-radius:16px;padding:24px;margin-bottom:18px}
-    label{display:block;margin:16px 0 7px;font-size:13px;color:#c3d0df}select,input{width:100%;box-sizing:border-box}
-    .run{width:100%;background:#69d8d0;color:#08242c;border:0;font-weight:800;margin-top:22px}
-    .hint,.meta{font-size:13px}.error{color:#ffaaa6}.game{display:flex;justify-content:space-between;gap:12px;padding:15px 0;border-bottom:1px solid #29394e;flex-wrap:wrap}
-    .game span{color:#b5c3d5}
+    .workbench{max-width:960px;margin:auto;padding:40px 20px 80px}header{margin-bottom:28px}h1{font-size:clamp(2rem,5vw,3.4rem);letter-spacing:-.04em;margin:10px 0}h2{margin:0 0 20px}h3{margin:0}
+    p{color:#a9b7cc;line-height:1.55}.eyebrow{font-size:12px;font-weight:800;letter-spacing:.17em;color:#73d8d0}.sports{display:flex;gap:12px;margin-bottom:22px}.sports button{flex:1}
+    button,select{font:inherit;border:1px solid #354359;border-radius:10px;padding:12px 14px;background:#18263a;color:#f5f8fd}button{cursor:pointer}button.selected{border-color:#69d8d0;background:#123b45}button:disabled{opacity:.55;cursor:default}
+    .panel{background:#111d2d;border:1px solid #29394e;border-radius:16px;padding:24px;margin-bottom:18px}label{display:block;margin:16px 0 7px;font-size:13px;color:#c3d0df}select{display:block;width:100%;box-sizing:border-box;margin-top:8px}
+    .columns{display:grid;grid-template-columns:1fr 1fr;gap:18px}.run{width:100%;background:#69d8d0;color:#08242c;border:0;font-weight:800;margin-top:22px}.hint,.meta{font-size:13px}.error{color:#ffaaa6}.stats{padding:15px;background:#172538;border-radius:10px}
+    .stats p{font-size:14px;border-bottom:1px solid #29394e;padding-bottom:6px}@media(max-width:650px){.columns{grid-template-columns:1fr}}
   `]
 })
 export class AppComponent {
   readonly sport = signal<Sport>('nba');
-  readonly mode = signal('matchup');
-  readonly sample = signal(10);
-  readonly date = signal(new Date().toLocaleDateString('en-CA'));
-  readonly loading = signal(false);
-  readonly result = signal<GamesResponse | null>(null);
-  readonly error = signal('');
-  chooseSport(value: Sport): void { this.sport.set(value); this.result.set(null); this.error.set(''); }
-  async run(): Promise<void> {
-    this.loading.set(true); this.error.set(''); this.result.set(null);
+  readonly teams = signal<Team[]>([]);
+  readonly left = signal(0); readonly right = signal(0); readonly sample = signal(10);
+  readonly loading = signal(false); readonly comparison = signal<Comparison | null>(null); readonly error = signal('');
+  private requestId = 0;
+  constructor() { void this.loadTeams(); }
+  teamName(id: number): string { return this.teams().find(t => t.id === id)?.full_name ?? 'Team'; }
+  chooseSport(value: Sport): void {
+    this.requestId++; this.sport.set(value); this.loading.set(false); this.comparison.set(null); this.error.set('');
+  }
+  async loadTeams(): Promise<void> {
     try {
-      const endpoint = this.sport() === 'nba' ? '/api/nba/games?date=' + encodeURIComponent(this.date()) : '/api/tennis/status';
-      const response = await fetch(endpoint, { cache: 'no-store' });
-      const data = await response.json() as GamesResponse & { message?: string };
-      if (!response.ok) throw new Error(data.message || data.error || 'Data provider unavailable');
-      if (this.sport() === 'tennis') throw new Error(data.message || 'Tennis provider is not configured');
-      this.result.set(data);
-    } catch (e) { this.error.set(e instanceof Error ? e.message : 'Unable to retrieve results'); }
-    finally { this.loading.set(false); }
+      const response = await fetch('/api/nba/teams', { cache: 'no-store' });
+      const body = await response.json() as { teams?: Team[]; message?: string };
+      if (!response.ok) throw new Error(body.message || 'Unable to load NBA teams');
+      this.teams.set((body.teams || []).filter(t => t.id && t.full_name).sort((a,b) => a.full_name.localeCompare(b.full_name)));
+    } catch(e) { if (this.sport() === 'nba') this.error.set(e instanceof Error ? e.message : 'Unable to load teams'); }
+  }
+  async run(): Promise<void> {
+    if (this.sport() !== 'nba' || !this.left() || !this.right() || this.left() === this.right()) return;
+    const id = ++this.requestId, a = this.left(), b = this.right(), n = this.sample();
+    this.loading.set(true); this.error.set(''); this.comparison.set(null);
+    try {
+      const response = await fetch('/api/nba/compare?left=' + a + '&right=' + b + '&sample=' + n, { cache: 'no-store' });
+      const body = await response.json() as Comparison & { message?: string; error?: string };
+      if (!response.ok) throw new Error(body.message || body.error || 'Comparison unavailable');
+      if (id === this.requestId && this.sport() === 'nba') this.comparison.set(body);
+    } catch(e) { if (id === this.requestId && this.sport() === 'nba') this.error.set(e instanceof Error ? e.message : 'Unable to compare teams'); }
+    finally { if (id === this.requestId) this.loading.set(false); }
   }
 }
