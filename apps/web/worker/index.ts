@@ -1,74 +1,28 @@
-import { handleHealth } from './health';
-import { advanceSportsCatalog, handleSportsCatalog } from './catalog';
-import { handleMarkets, scanMarkets } from './markets';
-import { handleNbaComparisons } from './nba';
-import { handleNbaEv } from './nba-ev';
-import { historyResponse, persistSnapshot, type RadarDatabase } from './persistence';
-
 interface Environment {
   ASSETS: { fetch(request: Request): Promise<Response> };
-  /** Optional until the user provisions D1 and applies the migration. */
-  RADAR_DB?: RadarDatabase;
+  BALLDONTLIE_API_KEY?: string;
 }
-
+const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
 export default {
   async fetch(request: Request, env: Environment): Promise<Response> {
-    const path = new URL(request.url).pathname;
-
-    if (path === '/api/markets') {
-      if (request.method !== 'GET') return new Response('Method not allowed', { status: 405 });
-      return handleMarkets(request, env.RADAR_DB);
+    const url = new URL(request.url);
+    if (url.pathname === '/api/health') return json({ status: 'ok', activeSports: ['nba', 'tennis'], backgroundScanning: false });
+    if (url.pathname === '/api/tennis/status') return json({ message: 'Tennis provider not configured. Challenger/ITF coverage and latency must be verified before activation.', configured: false }, 503);
+    if (url.pathname === '/api/nba/games') {
+      if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
+      if (!env.BALLDONTLIE_API_KEY) return json({ message: 'BALLDONTLIE_API_KEY is not configured as a Worker secret.' }, 503);
+      const date = url.searchParams.get('date') || new Date().toISOString().slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date))) return json({ error: 'Invalid date; expected YYYY-MM-DD' }, 400);
+      try {
+        const upstream = await fetch('https://api.balldontlie.io/v1/games?dates[]=' + encodeURIComponent(date) + '&per_page=100', {
+          headers: { Authorization: env.BALLDONTLIE_API_KEY }, signal: AbortSignal.timeout(10000)
+        });
+        if (!upstream.ok) return json({ message: 'BALLDONTLIE request failed', upstreamStatus: upstream.status }, 502);
+        const body = await upstream.json() as { data?: unknown[] };
+        return json({ source: 'BALLDONTLIE NBA API', fetchedAt: new Date().toISOString(), games: Array.isArray(body.data) ? body.data : [] });
+      } catch { return json({ message: 'BALLDONTLIE unavailable or timed out' }, 502); }
     }
-
-    if (path === '/api/catalog') {
-      if (request.method !== 'GET') return new Response('Method not allowed', { status: 405 });
-      return handleSportsCatalog(request, env.RADAR_DB);
-    }
-
-    if (path === '/api/history') {
-      if (request.method !== 'GET') return new Response('Method not allowed', { status: 405 });
-      return historyResponse(request, env.RADAR_DB);
-    }
-
-    if (path === '/api/nba/comparisons') {
-      if (request.method !== 'GET') return new Response('Method not allowed', { status: 405 });
-      return handleNbaComparisons(request);
-    }
-
-    if (path === '/api/nba/ev') {
-      if (request.method !== 'GET') return new Response('Method not allowed', { status: 405 });
-      return handleNbaEv(request);
-    }
-
-    if (path === '/api/health') {
-      if (request.method !== 'GET') return new Response('Method not allowed', { status: 405 });
-      return handleHealth();
-    }
-
-    if (path.startsWith('/api/')) {
-      return Response.json({ error: 'Not found' }, { status: 404 });
-    }
-
+    if (url.pathname.startsWith('/api/')) return json({ error: 'Not found' }, 404);
     return env.ASSETS.fetch(request);
-  },
-
-  async scheduled(event: { scheduledTime?: number }, env: Environment): Promise<void> {
-    if (!env.RADAR_DB) {
-      console.warn('RADAR_DB is not bound; scheduled catalog and snapshots are disabled.');
-      return;
-    }
-    try {
-      await advanceSportsCatalog(env.RADAR_DB);
-    } catch (error) {
-      // A pending D1 migration must never interrupt the existing price history.
-      console.error('Resumable Sports catalog scan unavailable', error);
-    }
-    // Background catalog indexing runs every two minutes, but historical
-    // price samples continue on the original 30-minute schedule.
-    const time = new Date(event?.scheduledTime ?? Date.now());
-    if (time.getUTCMinutes() % 30 !== 0) return;
-    const snapshot = await scanMarkets();
-    await persistSnapshot(env.RADAR_DB, snapshot);
-    console.log(`Stored ${snapshot.markets.length} market prices at ${snapshot.scannedAt}`);
   }
 };
