@@ -22,6 +22,31 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === '/api/health') return json({ status: 'ok', activeSports: ['nba', 'tennis'], backgroundScanning: false });
     if (url.pathname === '/api/tennis/status') return json({ message: 'Tennis data provider not configured. Challenger and ITF coverage must be verified.', configured: false }, 503);
+
+    if (url.pathname === '/api/markets/scan') {
+      if (request.method !== 'POST') return json({ error: 'Use the Scan button to initiate a POST request.' }, 405);
+      const provider = url.searchParams.get('provider') || 'kalshi';
+      if (provider === 'novig') return json({ error: 'Novig public market-data integration is not configured yet.' }, 501);
+      if (provider !== 'kalshi') return json({ error: 'Unsupported provider' }, 400);
+      try {
+        // Deliberately bounded, on-demand only. No cron, D1 writes, or implicit polling.
+        const endpoint = 'https://external-api.kalshi.com/trade-api/v2';
+        const response = await fetch(endpoint + '/events?status=open&limit=200&with_nested_markets=true', {
+          headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(13000)
+        });
+        if (!response.ok) throw new Error('Kalshi HTTP ' + response.status);
+        const page = await response.json() as { events?: Array<{ event_ticker?: string; title?: string; category?: string; markets?: Array<{ ticker?: string; title?: string; status?: string; yes_bid_dollars?: string; yes_ask_dollars?: string; no_ask_dollars?: string; last_price_dollars?: string; volume_24h_fp?: string }> }>; cursor?: string };
+        if (!Array.isArray(page.events)) throw new Error('Unexpected Kalshi event response');
+        const markets = page.events.filter(e => e.category?.toLowerCase() === 'sports')
+          .flatMap(e => (e.markets || []).filter(m => m.ticker && (!m.status || ['open','active'].includes(m.status)))
+            .map(m => ({ ticker: m.ticker, event: e.title || e.event_ticker || '', title: m.title || m.ticker,
+              yesBid: m.yes_bid_dollars ?? null, yesAsk: m.yes_ask_dollars ?? null,
+              noAsk: m.no_ask_dollars ?? null, last: m.last_price_dollars ?? null,
+              volume24h: m.volume_24h_fp ?? null })));
+        return json({ source: 'Kalshi public API', provider, scannedAt: new Date().toISOString(),
+          markets, partialCoverage: Boolean(page.cursor), note: 'On-demand snapshot of one Kalshi events page. Not a full market index or 30-minute price history.' });
+      } catch (e) { return json({ error: e instanceof Error ? e.message : 'Kalshi feed unavailable' }, 502); }
+    }
     if (url.pathname.startsWith('/api/nba/')) {
       if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
       if (!env.BALLDONTLIE_API_KEY) return json({ message: 'BALLDONTLIE_API_KEY Worker secret is missing.' }, 503);
