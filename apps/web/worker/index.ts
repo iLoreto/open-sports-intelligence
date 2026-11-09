@@ -64,27 +64,35 @@ export default {
         // Request actual market quotes from the markets endpoint rather than relying on
         // potentially incomplete event-nested quote snapshots. Batch event tickers (max 10).
         const eventTitles = new Map(sports.map(e => [e.event_ticker!, e.title || e.event_ticker!]));
-        const groups: string[][] = [];
-        for (let i = 0; i < sports.length; i += 10) groups.push(sports.slice(i, i + 10).map(e => e.event_ticker!));
-        const results = await Promise.all(groups.map(async tickers => {
-          const collected: (Quote & { event_ticker?: string })[] = [];
-          let marketCursor = '';
-          for (let pageNumber = 0; pageNumber < 3; pageNumber++) {
-            const query = new URLSearchParams({ status: 'open', limit: '1000', event_ticker: tickers.join(',') });
-            if (marketCursor) query.set('cursor', marketCursor);
-            const response = await fetch(endpoint + '/markets?' + query.toString(), {
-              headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(13000)
-            });
-            if (!response.ok) throw new Error('Kalshi markets HTTP ' + response.status);
-            const page = await response.json() as { markets?: (Quote & { event_ticker?: string })[]; cursor?: string };
-            if (!Array.isArray(page.markets)) throw new Error('Unexpected Kalshi markets response');
-            collected.push(...page.markets);
-            const next = page.cursor || '';
-            if (!next || next === marketCursor) break;
-            marketCursor = next;
+        // Kalshi accepts a SINGLE event_ticker here; comma-separated values are only
+        // supported by the separate tickers (market ticker) filter.
+        // Bound concurrency so a scan does not flood the upstream API.
+        const results: (Quote & { event_ticker?: string })[][] = [];
+        const eventTickers = [...eventTitles.keys()];
+        let nextEventIndex = 0;
+        const worker = async () => {
+          while (nextEventIndex < eventTickers.length) {
+            const eventTicker = eventTickers[nextEventIndex++];
+            const collected: (Quote & { event_ticker?: string })[] = [];
+            let marketCursor = '';
+            for (let pageNumber = 0; pageNumber < 3; pageNumber++) {
+              const query = new URLSearchParams({ status: 'open', limit: '1000', event_ticker: eventTicker });
+              if (marketCursor) query.set('cursor', marketCursor);
+              const response = await fetch(endpoint + '/markets?' + query.toString(), {
+                headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(13000)
+              });
+              if (!response.ok) throw new Error('Kalshi markets HTTP ' + response.status + ' for ' + eventTicker);
+              const page = await response.json() as { markets?: (Quote & { event_ticker?: string })[]; cursor?: string };
+              if (!Array.isArray(page.markets)) throw new Error('Unexpected Kalshi markets response for ' + eventTicker);
+              collected.push(...page.markets);
+              const next = page.cursor || '';
+              if (!next || next === marketCursor) break;
+              marketCursor = next;
+            }
+            results.push(collected);
           }
-          return collected;
-        }));
+        };
+        await Promise.all(Array.from({ length: Math.min(6, eventTickers.length) }, () => worker()));
         const seen = new Set<string>();
         for (const market of results.flat()) {
           if (!market.ticker || !market.event_ticker || !eventTitles.has(market.event_ticker) || (market.status && !['open', 'active'].includes(market.status))) continue;
@@ -105,7 +113,7 @@ export default {
         }
         markets.sort((a, b) => a.askCents - b.askCents || a.event.localeCompare(b.event));
         return json({ source: 'Kalshi public API', provider, scannedAt: new Date().toISOString(),
-          min, max, sportsEvents, pagesScanned, nestedMarkets, quotedMarkets, markets, partialCoverage: Boolean(cursor),
+          min, max, sportsEvents, pagesScanned, nestedMarkets, quotedMarkets, fetchedMarkets: results.reduce((n, group) => n + group.length, 0), markets, partialCoverage: Boolean(cursor),
           note: 'Sports-only, on-demand scan. Quotes are displayed by contract side (YES/NO) at the current ask. Up to five event pages are checked; prices are retrieved from the markets endpoint. Additional pages may exist.' });
       } catch (e) { return json({ error: e instanceof Error ? e.message : 'Kalshi feed unavailable' }, 502); }
     }
