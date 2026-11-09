@@ -3,6 +3,7 @@
   "name": "open-sports-intelligence",
   "main": "./worker/index.ts",
   "compatibility_date": "2026-11-01",
+  "previews": {},
   "assets": {
     "directory": "./dist/web/browser",
     "binding": "ASSETS",
