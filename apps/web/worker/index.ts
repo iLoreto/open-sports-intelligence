@@ -165,7 +165,7 @@ export default {
         return json(result);
       } catch (e) { return json({ error: e instanceof Error ? e.message : 'Kalshi feed unavailable' }, 502); }
     }
-    const leagueCompare = /^\\/api\\/leagues\\/(nfl|nhl|mlb|wnba|ncaaf|ncaam)\\/compare$/.exec(url.pathname);
+    const leagueCompare = new RegExp('^/api/leagues/(nfl|nhl|mlb|wnba|ncaaf|ncaam)/compare$').exec(url.pathname);
     if (leagueCompare) {
       if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
       const league = leagueCompare[1];
@@ -228,7 +228,7 @@ export default {
     }
     if (url.pathname.startsWith('/api/leagues/')) {
       if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
-      const match = /^\\/api\\/leagues\\/(nfl|nhl|mlb|wnba|ncaaf|ncaam)\\/teams$/.exec(url.pathname);
+      const match = new RegExp('^/api/leagues/(nfl|nhl|mlb|wnba|ncaaf|ncaam)/teams$').exec(url.pathname);
       if (!match) return json({ error: 'Unknown league' }, 404);
       const leagues: Record<string, string> = { nfl: 'football/nfl', nhl: 'hockey/nhl', mlb: 'baseball/mlb', wnba: 'basketball/wnba', ncaaf: 'football/college-football', ncaam: 'basketball/mens-college-basketball' };
       try {
