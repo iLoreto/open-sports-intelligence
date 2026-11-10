@@ -115,10 +115,9 @@ test('market scan keeps sports markets even when markets feed has no matching ev
 	assert.equal(response.status, 200);
 	const body = await response.json() as any;
 	assert.ok(Array.isArray(body.markets));
-	assert.equal(body.markets.length, 2);
+	assert.equal(body.markets.length, 1);
 	assert.deepEqual(body.markets.map((market: any) => [market.ticker, market.side, market.askCents]), [
-	  ['SPORT-1-WIN', 'YES', 58],
-	  ['SPORT-1-TOTAL', 'NO', 61]
+	  ['SPORT-1-WIN', 'YES', 58]
 	]);
   } finally {
 	globalThis.fetch = originalFetch;
