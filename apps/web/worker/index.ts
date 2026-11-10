@@ -7,25 +7,23 @@ const json = (data: unknown, status = 200) => Response.json(data, { status, head
 function validDate(value: string): boolean { return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value)); }
 const NBA_ABBREVIATIONS = ['ATL','BOS','BKN','CHA','CHI','CLE','DAL','DEN','DET','GS','HOU','IND','LAC','LAL','MEM','MIA','MIL','MIN','NO','NY','OKC','ORL','PHI','PHX','POR','SAC','SA','TOR','UTAH','WSH'];
 async function espnComparison(left: number, right: number, sample: number) {
-  const now = new Date();
-  const start = new Date(now.getTime() - 180 * 86400000);
-  const months: string[] = [];
-  const cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
-  while (cursor <= now) {
-    const year = cursor.getUTCFullYear(), month = cursor.getUTCMonth();
-    const first = Math.max(start.getTime(), Date.UTC(year, month, 1));
-    const last = Math.min(now.getTime(), Date.UTC(year, month + 1, 0));
-    const fmt = (ms: number) => new Date(ms).toISOString().slice(0, 10).replace(/-/g, '');
-    months.push(fmt(first) + '-' + fmt(last));
-    cursor.setUTCMonth(cursor.getUTCMonth() + 1);
-  }
+  // ESPN scoreboard rejects large date-range requests (HTTP 400). Query each
+  // selected team's season schedule instead, using ESPN's own NBA team IDs.
+  const currentYear = new Date().getUTCFullYear();
   type EspnCompetitor = { homeAway?: string; score?: string; team?: { abbreviation?: string } };
   type EspnEvent = { id?: string; date?: string; status?: { type?: { completed?: boolean } }; competitions?: { competitors?: EspnCompetitor[] }[] };
-  const pages = await Promise.all(months.map(async dates => {
-    const response = await fetch('https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=' + dates + '&limit=500', { signal: AbortSignal.timeout(12000) });
-    if (!response.ok) throw new Error('ESPN scoreboard HTTP ' + response.status);
-    return response.json() as Promise<{ events?: EspnEvent[] }>;
-  }));
+  const espnIds: Record<number, number> = { 1: 1, 2: 2, 3: 17, 4: 30, 5: 4, 6: 5, 7: 6, 8: 7, 9: 8, 10: 9, 11: 10, 12: 11, 13: 12, 14: 13, 15: 29, 16: 14, 17: 15, 18: 16, 19: 3, 20: 18, 21: 25, 22: 19, 23: 20, 24: 21, 25: 22, 26: 23, 27: 24, 28: 28, 29: 26, 30: 27 };
+  const teamIds = [left, right].map(id => espnIds[id]);
+  if (teamIds.some(id => !id)) throw new Error('Unsupported NBA team ID');
+  const seasons = [currentYear + 1, currentYear, currentYear - 1];
+  const pages = await Promise.all(teamIds.flatMap(id => seasons.map(async season => {
+    const endpoint = 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/' + id + '/schedule?season=' + season;
+    const response = await fetch(endpoint, { signal: AbortSignal.timeout(12000), headers: { Accept: 'application/json' } });
+    if (!response.ok) throw new Error('ESPN NBA team schedule HTTP ' + response.status);
+    const payload = await response.json() as { events?: EspnEvent[] };
+    if (!Array.isArray(payload.events)) throw new Error('ESPN NBA schedule response missing events');
+    return payload;
+  })));
   const ids = new Map<string, number>();
   NBA_ABBREVIATIONS.forEach((abbr, i) => ids.set(abbr, i + 1));
   // Normalize ESPN abbreviations to the app's stable NBA team IDs.
@@ -46,7 +44,7 @@ async function espnComparison(left: number, right: number, sample: number) {
   const all = [...games.values()];
   const a = summarize(all, left, sample), b = summarize(all, right, sample);
   if (!a.games || !b.games) throw new Error('ESPN returned no completed games for one or both selected teams.');
-  return { source: 'ESPN NBA scoreboard', fetchedAt: new Date().toISOString(), sample, left: a, right: b, partial: a.games < sample || b.games < sample, note: 'Completed NBA games from the last 180 days. ESPN public scoreboard; available sample sizes may be smaller than requested. No injury or player statistics included.' };
+  return { source: 'ESPN NBA scoreboard', fetchedAt: new Date().toISOString(), sample, left: a, right: b, partial: a.games < sample || b.games < sample, note: 'Completed NBA games from ESPN team schedules across recent seasons; available sample sizes may be smaller than requested. No injury or player statistics included.' };
 }
 function summarize(games: Game[], id: number, sample: number) {
   const played = games.filter(g => (g.home_team.id === id || g.visitor_team.id === id) && (g.status === 'Final' || g.status.startsWith('Final')) && Number.isFinite(g.home_team_score) && Number.isFinite(g.visitor_team_score))
