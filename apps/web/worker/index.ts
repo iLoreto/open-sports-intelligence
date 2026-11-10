@@ -12,6 +12,49 @@ async function bdl(path: string, key: string): Promise<{ data: unknown[]; meta?:
   if (!Array.isArray(body.data)) throw new Error('Unexpected BALLDONTLIE response');
   return { data: body.data, meta: body.meta };
 }
+const NBA_ABBREVIATIONS = ['ATL','BOS','BKN','CHA','CHI','CLE','DAL','DEN','DET','GS','HOU','IND','LAC','LAL','MEM','MIA','MIL','MIN','NO','NY','OKC','ORL','PHI','PHX','POR','SAC','SA','TOR','UTAH','WSH'];
+async function espnComparison(left: number, right: number, sample: number) {
+  const now = new Date();
+  const start = new Date(now.getTime() - 180 * 86400000);
+  const months: string[] = [];
+  const cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
+  while (cursor <= now) {
+    const year = cursor.getUTCFullYear(), month = cursor.getUTCMonth();
+    const first = Math.max(start.getTime(), Date.UTC(year, month, 1));
+    const last = Math.min(now.getTime(), Date.UTC(year, month + 1, 0));
+    const fmt = (ms: number) => new Date(ms).toISOString().slice(0, 10).replace(/-/g, '');
+    months.push(fmt(first) + '-' + fmt(last));
+    cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+  }
+  type EspnCompetitor = { homeAway?: string; score?: string; team?: { abbreviation?: string } };
+  type EspnEvent = { id?: string; date?: string; status?: { type?: { completed?: boolean } }; competitions?: { competitors?: EspnCompetitor[] }[] };
+  const pages = await Promise.all(months.map(async dates => {
+    const response = await fetch('https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=' + dates + '&limit=500', { signal: AbortSignal.timeout(12000) });
+    if (!response.ok) throw new Error('ESPN scoreboard HTTP ' + response.status);
+    return response.json() as Promise<{ events?: EspnEvent[] }>;
+  }));
+  const ids = new Map<string, number>();
+  NBA_ABBREVIATIONS.forEach((abbr, i) => ids.set(abbr, i + 1));
+  // ESPN uses a few different abbreviations than BALLDONTLIE.
+  ids.set('GSW', 10); ids.set('NOP', 19); ids.set('NYK', 20); ids.set('OKC', 21);
+  ids.set('SAS', 27); ids.set('UTA', 29); ids.set('WAS', 30);
+  const games = new Map<string, Game>();
+  for (const page of pages) for (const event of page.events || []) {
+    if (!event.id || !event.date || !event.status?.type?.completed) continue;
+    const competitors = event.competitions?.[0]?.competitors || [];
+    const home = competitors.find(c => c.homeAway === 'home'), away = competitors.find(c => c.homeAway === 'away');
+    if (!home || !away) continue;
+    const homeId = ids.get(home.team?.abbreviation || ''), awayId = ids.get(away.team?.abbreviation || '');
+    const hs = Number(home.score), as = Number(away.score);
+    if (!homeId || !awayId || !Number.isFinite(hs) || !Number.isFinite(as)) continue;
+    if (homeId !== left && awayId !== left && homeId !== right && awayId !== right) continue;
+    games.set(event.id, { id: Number(event.id), date: event.date.slice(0, 10), status: 'Final', home_team: { id: homeId, full_name: '' }, visitor_team: { id: awayId, full_name: '' }, home_team_score: hs, visitor_team_score: as });
+  }
+  const all = [...games.values()];
+  const a = summarize(all, left, sample), b = summarize(all, right, sample);
+  if (!a.games || !b.games) throw new Error('ESPN returned no completed games for one or both selected teams.');
+  return { source: 'ESPN NBA scoreboard (public fallback)', fetchedAt: new Date().toISOString(), sample, left: a, right: b, partial: a.games < sample || b.games < sample, note: 'Completed NBA games from the last 180 days. ESPN public scoreboard fallback; available sample sizes may be smaller than requested. No injury or player statistics included.' };
+}
 function summarize(games: Game[], id: number, sample: number) {
   const played = games.filter(g => (g.home_team.id === id || g.visitor_team.id === id) && (g.status === 'Final' || g.status.startsWith('Final')) && Number.isFinite(g.home_team_score) && Number.isFinite(g.visitor_team_score))
     .sort((a, b) => b.date.localeCompare(a.date)).slice(0, sample);
@@ -125,11 +168,12 @@ export default {
     if (url.pathname.startsWith('/api/nba/')) {
       if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
       if (url.pathname === '/api/nba/teams') return json({ source: 'NBA team directory', teams: NBA_TEAMS });
-      if (typeof env.BALLDONTLIE_API_KEY !== 'string' || !env.BALLDONTLIE_API_KEY.trim()) return json({ message: 'NBA runtime secret binding missing. Check Worker Settings → Variables and Secrets (not Build variables).', code: 'NBA_RUNTIME_SECRET_MISSING' }, 503);
+      const hasBdlKey = typeof env.BALLDONTLIE_API_KEY === 'string' && Boolean(env.BALLDONTLIE_API_KEY.trim());
       try {
         if (url.pathname === '/api/nba/games') {
           const date = url.searchParams.get('date') || new Date().toISOString().slice(0, 10);
           if (!validDate(date)) return json({ error: 'Invalid date' }, 400);
+          if (!hasBdlKey) return json({ message: 'Dated games endpoint requires BALLDONTLIE; use team comparison for ESPN fallback.' }, 503);
           const data = await bdl('games?dates[]=' + encodeURIComponent(date) + '&per_page=100', env.BALLDONTLIE_API_KEY);
           return json({ source: 'BALLDONTLIE NBA API', fetchedAt: new Date().toISOString(), games: data.data });
         }
@@ -137,6 +181,7 @@ export default {
           const left = Number(url.searchParams.get('left')), right = Number(url.searchParams.get('right'));
           const sample = Number(url.searchParams.get('sample') || 10);
           if (!Number.isInteger(left) || !Number.isInteger(right) || left <= 0 || right <= 0 || left === right || ![5,10,20].includes(sample)) return json({ error: 'Select two different teams and a valid sample.' }, 400);
+          if (!hasBdlKey) return json(await espnComparison(left, right, sample));
           const end = new Date(), start = new Date(end.getTime() - 180 * 86400000);
           const query = (id: number) => 'games?team_ids[]=' + id + '&start_date=' + start.toISOString().slice(0,10) + '&end_date=' + end.toISOString().slice(0,10) + '&per_page=100';
           const [a,b] = await Promise.all([bdl(query(left), env.BALLDONTLIE_API_KEY), bdl(query(right), env.BALLDONTLIE_API_KEY)]);
