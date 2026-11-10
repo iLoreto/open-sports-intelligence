@@ -8,5 +8,5 @@ if (!/^[a-f0-9]{7,40}$/i.test(sha)) {
 }
 const id = /^[a-f0-9]{7,40}$/i.test(sha) ? sha.slice(0, 8) : 'unknown';
 writeFileSync(new URL('../src/app/build-info.ts', import.meta.url),
-  '// Generated during build; do not edit.\\nexport const BUILD_ID = ' + JSON.stringify(id) + ';\\n');
+  '// Generated during build; do not edit.\nexport const BUILD_ID = ' + JSON.stringify(id) + ';\n');
 console.log('Application build:', id);
