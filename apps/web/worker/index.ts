@@ -10,7 +10,7 @@ async function espnComparison(left: number, right: number, sample: number) {
   // ESPN scoreboard rejects large date-range requests (HTTP 400). Query each
   // selected team's season schedule instead, using ESPN's own NBA team IDs.
   const currentYear = new Date().getUTCFullYear();
-  type EspnCompetitor = { homeAway?: string; score?: string; team?: { abbreviation?: string } };
+  type EspnCompetitor = { homeAway?: string; score?: string; team?: { id?: string; abbreviation?: string } };
   type EspnEvent = { id?: string; date?: string; status?: { type?: { completed?: boolean } }; competitions?: { competitors?: EspnCompetitor[] }[] };
   const espnIds: Record<number, number> = { 1: 1, 2: 2, 3: 17, 4: 30, 5: 4, 6: 5, 7: 6, 8: 7, 9: 8, 10: 9, 11: 10, 12: 11, 13: 12, 14: 13, 15: 29, 16: 14, 17: 15, 18: 16, 19: 3, 20: 18, 21: 25, 22: 19, 23: 20, 24: 21, 25: 22, 26: 23, 27: 24, 28: 28, 29: 26, 30: 27 };
   const teamIds = [left, right].map(id => espnIds[id]);
@@ -35,7 +35,12 @@ async function espnComparison(left: number, right: number, sample: number) {
     const competitors = event.competitions?.[0]?.competitors || [];
     const home = competitors.find(c => c.homeAway === 'home'), away = competitors.find(c => c.homeAway === 'away');
     if (!home || !away) continue;
-    const homeId = ids.get(home.team?.abbreviation || ''), awayId = ids.get(away.team?.abbreviation || '');
+    const homeByAbbreviation = ids.get(home.team?.abbreviation || '');
+    const awayByAbbreviation = ids.get(away.team?.abbreviation || '');
+    const homeById = Number(home.team?.id);
+    const awayById = Number(away.team?.id);
+    const homeId = homeByAbbreviation || (Number.isInteger(homeById) && homeById >= 1 && homeById <= 30 ? homeById : undefined);
+    const awayId = awayByAbbreviation || (Number.isInteger(awayById) && awayById >= 1 && awayById <= 30 ? awayById : undefined);
     const hs = Number(home.score), as = Number(away.score);
     if (!homeId || !awayId || !Number.isFinite(hs) || !Number.isFinite(as)) continue;
     if (homeId !== left && awayId !== left && homeId !== right && awayId !== right) continue;
@@ -122,20 +127,32 @@ export default {
           marketCursor = next;
         }
         const seen = new Set<string>();
-        for (const market of results.flat()) {
-          if (!market.ticker || !market.event_ticker || !eventTitles.has(market.event_ticker) || (market.status && !['open', 'active'].includes(market.status))) continue;
-          if (seen.has(market.ticker)) continue;
+        const addMarket = (market: Quote & { event_ticker?: string }, event: string) => {
+          if (!market.ticker || (market.status && !['open', 'active'].includes(market.status))) return;
+          if (seen.has(market.ticker)) return;
           seen.add(market.ticker);
           const quotes = [['YES', market.yes_ask_dollars], ['NO', market.no_ask_dollars]] as const;
           for (const [side, ask] of quotes) {
             if (typeof ask !== 'string' || !/^\d+(?:\.\d+)?$/.test(ask)) continue;
             quotedMarkets++;
             const cents = Math.round(Number(ask) * 100);
-            markets.push({ ticker: market.ticker, event: eventTitles.get(market.event_ticker) || market.event_ticker,
+            markets.push({ ticker: market.ticker, event,
               title: market.title || market.ticker, side, askCents: cents,
               yesBid: market.yes_bid_dollars ?? null, yesAsk: market.yes_ask_dollars ?? null,
               noAsk: market.no_ask_dollars ?? null, last: market.last_price_dollars ?? null,
               volume24h: market.volume_24h_fp ?? null });
+          }
+        };
+        for (const market of results.flat()) {
+          if (!market.event_ticker || !eventTitles.has(market.event_ticker)) continue;
+          addMarket(market, eventTitles.get(market.event_ticker) || market.event_ticker);
+        }
+        if (markets.length === 0) {
+          for (const event of sports) {
+            if (!event.event_ticker) continue;
+            for (const market of event.markets || []) {
+              addMarket(market, event.title || event.event_ticker);
+            }
           }
         }
         scanSignal.throwIfAborted();
