@@ -142,8 +142,22 @@ export default {
           marketCursor = next;
         }
         const seen = new Set<string>();
+        const isMoneylineMarket = (event: string, title: string, ticker: string): boolean => {
+          const eventText = event.toLowerCase();
+          const text = (event + ' ' + title).toLowerCase();
+          if (text.includes(',')) return false;
+          if (/\b(over|under|spread|total|handicap|alternate line|alt line)\b/.test(text)) return false;
+          if (/[+-]\d+(?:\.\d+)?/.test(text)) return false;
+          const matchContext = /\b(at|vs|v)\b/.test(eventText) || /\b(match|game)\b/.test(eventText);
+          if (!matchContext) return false;
+          const winnerSignal = /\bwin(?:s|ner)?\b|\bto win\b|\bmoneyline\b/.test(text);
+          const tickerSignal = /(?:^|[-_])ml(?:$|[-_])/i.test(ticker);
+          return winnerSignal || tickerSignal;
+        };
         const addMarket = (market: Quote & { event_ticker?: string }, event: string) => {
           if (!market.ticker || (market.status && !['open', 'active'].includes(market.status))) return;
+          const title = market.title || market.ticker;
+          if (!isMoneylineMarket(event, title, market.ticker)) return;
           if (seen.has(market.ticker)) return;
           seen.add(market.ticker);
           const quotes = [['YES', market.yes_ask_dollars], ['NO', market.no_ask_dollars]] as const;
@@ -152,7 +166,7 @@ export default {
             quotedMarkets++;
             const cents = Math.round(Number(ask) * 100);
             markets.push({ ticker: market.ticker, event,
-              title: market.title || market.ticker, side, askCents: cents,
+              title, side, askCents: cents,
               yesBid: market.yes_bid_dollars ?? null, yesAsk: market.yes_ask_dollars ?? null,
               noAsk: market.no_ask_dollars ?? null, last: market.last_price_dollars ?? null,
               volume24h: market.volume_24h_fp ?? null });
@@ -174,7 +188,7 @@ export default {
         markets.sort((a, b) => a.askCents - b.askCents || a.event.localeCompare(b.event));
         return { source: 'Kalshi public API', provider, scannedAt: new Date().toISOString(),
           sportsEvents, pagesScanned, nestedMarkets, quotedMarkets, fetchedMarkets: results.reduce((n, group) => n + group.length, 0), marketPagesScanned, rateLimited, markets, partialCoverage: Boolean(cursor || marketCursor || rateLimited),
-          note: 'Sports-only, on-demand scan. Quotes are displayed by contract side (YES/NO) at the current ask. Up to five event pages and ten market pages are checked. Coverage is partial when additional pages exist or rate limiting occurs.' };
+          note: 'Sports-only, on-demand scan. Results include match moneyline contracts only, displayed by contract side (YES/NO) at the current ask. Up to five event pages and ten market pages are checked. Coverage is partial when additional pages exist or rate limiting occurs.' };
         };
         const result = env.DB
           ? await sharedScan(env.DB, min, max, fetchSnapshot)

@@ -48,7 +48,7 @@ interface Comparison { source: string; fetchedAt: string; sample: number; left: 
         </div>
         <div class="range-scale"><span>1¢</span><span>99¢</span></div>
       </div>
-      <p class="hint">Sports markets only. Matches either YES or NO contracts whose current ask is within the inclusive range.</p>
+      <p class="hint">Sports moneyline match markets only. Matches either YES or NO contracts whose current ask is within the inclusive range.</p>
       <p *ngIf="!validPriceRange()" class="error">Enter a valid range between 1¢ and 99¢, with minimum ≤ maximum.</p>
       <p *ngIf="provider() === 'novig'" class="hint">Novig integration is not configured yet.</p>
       <button class="run" [disabled]="scanLoading() || provider() === 'novig' || !validPriceRange()" (click)="scan()">{{ scanLoading() ? 'Scanning…' : 'Scan now →' }}</button>
