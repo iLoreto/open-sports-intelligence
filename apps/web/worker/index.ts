@@ -12,12 +12,15 @@ async function espnComparison(left: number, right: number, sample: number) {
   const currentYear = new Date().getUTCFullYear();
   type EspnCompetitor = { homeAway?: string; score?: string; team?: { id?: string; abbreviation?: string } };
   type EspnEvent = { id?: string; date?: string; status?: { type?: { completed?: boolean } }; competitions?: { competitors?: EspnCompetitor[] }[] };
-  const espnIds: Record<number, number> = { 1: 1, 2: 2, 3: 17, 4: 30, 5: 4, 6: 5, 7: 6, 8: 7, 9: 8, 10: 9, 11: 10, 12: 11, 13: 12, 14: 13, 15: 29, 16: 14, 17: 15, 18: 16, 19: 3, 20: 18, 21: 25, 22: 19, 23: 20, 24: 21, 25: 22, 26: 23, 27: 24, 28: 28, 29: 26, 30: 27 };
-  const teamIds = [left, right].map(id => espnIds[id]);
-  if (teamIds.some(id => !id)) throw new Error('Unsupported NBA team ID');
+  const appTeamToEspnPath = (id: number): string | null => {
+    if (!Number.isInteger(id) || id < 1 || id > NBA_ABBREVIATIONS.length) return null;
+    return NBA_ABBREVIATIONS[id - 1].toLowerCase();
+  };
+  const teamPaths = [left, right].map(appTeamToEspnPath).filter((path): path is string => Boolean(path));
+  if (teamPaths.length !== 2) throw new Error('Unsupported NBA team ID');
   const seasons = [currentYear + 1, currentYear, currentYear - 1];
-  const pages = await Promise.all(teamIds.flatMap(id => seasons.map(async season => {
-    const endpoint = 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/' + id + '/schedule?season=' + season;
+  const pages = await Promise.all(teamPaths.flatMap(path => seasons.map(async season => {
+    const endpoint = 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/' + path + '/schedule?season=' + season;
     const response = await fetch(endpoint, { signal: AbortSignal.timeout(12000), headers: { Accept: 'application/json' } });
     if (!response.ok) throw new Error('ESPN NBA team schedule HTTP ' + response.status);
     const payload = await response.json() as { events?: EspnEvent[] };
