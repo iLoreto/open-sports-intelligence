@@ -3,7 +3,7 @@ import { Component, signal } from '@angular/core';
 import { BUILD_ID } from './build-info';
 type Sport = 'nba' | 'nfl' | 'nhl' | 'mlb' | 'wnba' | 'ncaaf' | 'ncaam' | 'tennis';
 interface Team { id: number | string; full_name: string; abbreviation?: string }
-interface Stats { games: number; wins: number; losses: number; pointsFor: number | null; pointsAgainst: number | null; recent: { date: string; scored: number; allowed: number; win: boolean }[] }
+interface Stats { games: number; wins: number; losses: number; ties?: number; pointsFor: number | null; pointsAgainst: number | null; recent: { date: string; scored: number; allowed: number; win: boolean }[] }
 interface Market { ticker: string; event: string; title: string; side: 'YES' | 'NO'; askCents: number; yesBid: string | null; yesAsk: string | null; noAsk: string | null; last: string | null; volume24h: string | null }
 interface ScanResult { source: string; scannedAt: string; markets: Market[]; partialCoverage: boolean; note: string; pagesScanned: number; sportsEvents: number }
 interface Comparison { source: string; fetchedAt: string; sample: number; left: Stats; right: Stats; partial: boolean; note: string }
@@ -14,25 +14,25 @@ interface Comparison { source: string; fetchedAt: string; sample: number; left: 
     <header><div class="eyebrow">OPEN SPORTS INTELLIGENCE</div><h1>Sports Research Workbench</h1><p>Manual, sport-specific research. No automated scanning.</p></header>
     <nav class="sports" aria-label="Workspaces"><button [class.selected]="tab() === 'research'" (click)="chooseTab('research')">Research</button><button [class.selected]="tab() === 'markets'" (click)="chooseTab('markets')">Market Scanner</button></nav>
     <ng-container *ngIf="tab() === 'research'"><nav class="sports" aria-label="Sports"><button *ngFor="let league of availableLeagues" [class.selected]="sport() === league.id" (click)="chooseSport(league.id)">{{ league.label }}</button></nav>
-    <section class="panel" *ngIf="sport() === 'nba'">
-      <div class="eyebrow">BALLDONTLIE / NBA</div><h2>Team vs team</h2>
+    <section class="panel" *ngIf="sport() !== 'tennis'">
+      <div class="eyebrow">{{ sport().toUpperCase() }} / TEAM COMPARISON</div><h2>Team vs team</h2>
       <p>Select two teams and a historical sample. The comparison calculates completed-game win/loss and scoring averages.</p>
       <div class="columns">
-        <label>Team A<select [value]="left()" (change)="left.set(+$any($event.target).value)"><option [value]="0">Select team</option><option *ngFor="let team of teams()" [value]="team.id">{{ team.full_name }}</option></select></label>
-        <label>Team B<select [value]="right()" (change)="right.set(+$any($event.target).value)"><option [value]="0">Select team</option><option *ngFor="let team of teams()" [value]="team.id">{{ team.full_name }}</option></select></label>
+        <label>Team A<select [value]="left()" (change)="left.set($any($event.target).value)"><option [value]="0">Select team</option><option *ngFor="let team of teams()" [value]="team.id">{{ team.full_name }}</option></select></label>
+        <label>Team B<select [value]="right()" (change)="right.set($any($event.target).value)"><option [value]="0">Select team</option><option *ngFor="let team of teams()" [value]="team.id">{{ team.full_name }}</option></select></label>
       </div>
       <label>Completed games to compare<select [value]="sample()" (change)="sample.set(+$any($event.target).value)"><option [value]="5">Last 5</option><option [value]="10">Last 10</option><option [value]="20">Last 20</option></select></label>
       <button class="run" [disabled]="loading() || !left() || !right() || left() === right()" (click)="run()">{{ loading() ? 'Loading…' : 'Run comparison →' }}</button>
-      <p class="hint">Scores and team-level form only. Player, injury, and advanced matchup analyses will be enabled when their data integrations are implemented.</p>
+      <p *ngIf="teamLoading()" class="hint">Loading {{ sport().toUpperCase() }} teams…</p><p class="hint">Scores and team-level form only. Player, injury, and advanced matchup analyses will be enabled when their data integrations are implemented.</p>
     </section>
-    <section class="panel" *ngIf="sport() !== 'nba' && sport() !== 'tennis'"><div class="eyebrow">ESPN / {{ sport().toUpperCase() }}</div><h2>League teams</h2><p>{{ teams().length }} teams retrieved from the public ESPN directory. Team comparison will be enabled once league-specific statistics are validated.</p><p *ngIf="teamLoading()">Loading teams…</p><div class="columns"><div class="stats" *ngFor="let team of teams()"><strong>{{ team.full_name }}</strong><p>{{ team.abbreviation || team.id }}</p></div></div></section>\n    <section class="panel" *ngIf="sport() === 'tennis'"><div class="eyebrow">TENNIS / ATP · WTA · CHALLENGER</div><h2>Tennis research</h2><p>The tennis provider is not yet configured. Player comparison controls will be enabled after verifying tournament coverage and historical statistics.</p></section>
-    <section class="panel" *ngIf="sport() === 'nba'" aria-live="polite"><h2>Results</h2>
+    <section class="panel" *ngIf="sport() === 'tennis'"><div class="eyebrow">TENNIS / ATP · WTA · CHALLENGER</div><h2>Tennis research</h2><p>The tennis provider is not yet configured. Player comparison controls will be enabled after verifying tournament coverage and historical statistics.</p></section>
+    <section class="panel" *ngIf="sport() !== 'tennis'" aria-live="polite"><h2>Results</h2>
       <p *ngIf="error()" class="error">{{ error() }}</p><p *ngIf="loading()">Retrieving provider data…</p>
-      <p *ngIf="!loading() && !comparison() && !error()" class="hint">Choose two NBA teams and run a comparison.</p>
+      <p *ngIf="!loading() && !comparison() && !error()" class="hint">Choose two teams and run a comparison.</p>
       <ng-container *ngIf="comparison() as c"><p class="meta">{{ c.source }} · {{ c.fetchedAt | date:'medium' }} · Last {{ c.sample }} games requested</p>
         <div class="columns">
-          <div class="stats"><h3>{{ teamName(left()) }}</h3><p>{{ c.left.wins }}W–{{ c.left.losses }}L ({{ c.left.games }} games)</p><p>Scored: {{ c.left.pointsFor ?? '—' }} / game</p><p>Allowed: {{ c.left.pointsAgainst ?? '—' }} / game</p><p *ngFor="let g of c.left.recent">{{ g.date | date:'shortDate' }} · {{ g.scored }}–{{ g.allowed }} · {{ g.win ? 'W' : 'L' }}</p></div>
-          <div class="stats"><h3>{{ teamName(right()) }}</h3><p>{{ c.right.wins }}W–{{ c.right.losses }}L ({{ c.right.games }} games)</p><p>Scored: {{ c.right.pointsFor ?? '—' }} / game</p><p>Allowed: {{ c.right.pointsAgainst ?? '—' }} / game</p><p *ngFor="let g of c.right.recent">{{ g.date | date:'shortDate' }} · {{ g.scored }}–{{ g.allowed }} · {{ g.win ? 'W' : 'L' }}</p></div>
+          <div class="stats"><h3>{{ teamName(left()) }}</h3><p>{{ c.left.wins }}W–{{ c.left.losses }}L<span *ngIf="c.left.ties">–{{ c.left.ties }}T</span> ({{ c.left.games }} games)</p><p>Scored: {{ c.left.pointsFor ?? '—' }} / game</p><p>Allowed: {{ c.left.pointsAgainst ?? '—' }} / game</p><p *ngFor="let g of c.left.recent">{{ g.date | date:'shortDate' }} · {{ g.scored }}–{{ g.allowed }} · {{ g.win ? 'W' : 'L' }}</p></div>
+          <div class="stats"><h3>{{ teamName(right()) }}</h3><p>{{ c.right.wins }}W–{{ c.right.losses }}L<span *ngIf="c.right.ties">–{{ c.right.ties }}T</span> ({{ c.right.games }} games)</p><p>Scored: {{ c.right.pointsFor ?? '—' }} / game</p><p>Allowed: {{ c.right.pointsAgainst ?? '—' }} / game</p><p *ngFor="let g of c.right.recent">{{ g.date | date:'shortDate' }} · {{ g.scored }}–{{ g.allowed }} · {{ g.win ? 'W' : 'L' }}</p></div>
         </div><p class="hint">{{ c.note }} <strong *ngIf="c.partial">Provider pagination indicates incomplete coverage.</strong></p>
       </ng-container>
     </section></ng-container>
@@ -115,11 +115,11 @@ export class AppComponent {
   readonly sport = signal<Sport>('nba');
   readonly teamLoading = signal(false);
   readonly teams = signal<Team[]>([]);
-  readonly left = signal(0); readonly right = signal(0); readonly sample = signal(10);
+  readonly left = signal<string | number>(0); readonly right = signal<string | number>(0); readonly sample = signal(10);
   readonly loading = signal(false); readonly comparison = signal<Comparison | null>(null); readonly error = signal('');
   private requestId = 0;
   constructor() { void this.loadTeams(); }
-  teamName(id: number): string { return this.teams().find(t => t.id === id)?.full_name ?? 'Team'; }
+  teamName(id: number | string): string { return this.teams().find(t => t.id === id)?.full_name ?? 'Team'; }
   chooseSport(value: Sport): void {
     this.requestId++; this.sport.set(value); this.teams.set([]); this.left.set(0); this.right.set(0); this.loading.set(false); this.comparison.set(null); this.error.set(''); if (value !== 'tennis') void this.loadTeams();
   }
@@ -134,15 +134,16 @@ export class AppComponent {
     finally { if (requestId === this.requestId) this.teamLoading.set(false); }
   }
   async run(): Promise<void> {
-    if (this.sport() !== 'nba' || !this.left() || !this.right() || this.left() === this.right()) return;
+    if (this.sport() === 'tennis' || !this.left() || !this.right() || this.left() === this.right()) return;
     const id = ++this.requestId, a = this.left(), b = this.right(), n = this.sample();
     this.loading.set(true); this.error.set(''); this.comparison.set(null);
     try {
-      const response = await fetch('/api/nba/compare?left=' + a + '&right=' + b + '&sample=' + n, { cache: 'no-store' });
+      const endpoint = this.sport() === 'nba' ? '/api/nba/compare' : '/api/leagues/' + this.sport() + '/compare';
+      const response = await fetch(endpoint + '?left=' + encodeURIComponent(a) + '&right=' + encodeURIComponent(b) + '&sample=' + n, { cache: 'no-store' });
       const body = await response.json() as Comparison & { message?: string; error?: string };
       if (!response.ok) throw new Error(body.message || body.error || 'Comparison unavailable');
-      if (id === this.requestId && this.sport() === 'nba') this.comparison.set(body);
-    } catch(e) { if (id === this.requestId && this.sport() === 'nba') this.error.set(e instanceof Error ? e.message : 'Unable to compare teams'); }
+      if (id === this.requestId) this.comparison.set(body);
+    } catch(e) { if (id === this.requestId) this.error.set(e instanceof Error ? e.message : 'Unable to compare teams'); }
     finally { if (id === this.requestId) this.loading.set(false); }
   }
 }
