@@ -165,26 +165,105 @@ export default {
         return json(result);
       } catch (e) { return json({ error: e instanceof Error ? e.message : 'Kalshi feed unavailable' }, 502); }
     }
+    const leagueCompare = new RegExp('^/api/leagues/(nfl|nhl|mlb|wnba|ncaaf|ncaam)/compare$').exec(url.pathname);
+    if (leagueCompare) {
+      if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
+      const league = leagueCompare[1];
+      const sportPaths: Record<string, string> = { nfl:'football/nfl', nhl:'hockey/nhl', mlb:'baseball/mlb', wnba:'basketball/wnba', ncaaf:'football/college-football', ncaam:'basketball/mens-college-basketball' };
+      const left = url.searchParams.get('left'), right = url.searchParams.get('right');
+      const sample = Number(url.searchParams.get('sample') || 5);
+      if (!left || !right || left === right || !/^[0-9]+$/.test(left) || !/^[0-9]+$/.test(right) || ![5,10,20].includes(sample)) return json({ error:'Select two different teams and a valid game range.' },400);
+      try {
+        const now = new Date(); const start = new Date(now.getTime() - (league === 'nfl' || league === 'ncaaf' ? 160 : 210) * 86400000);
+        const windows: string[] = [];
+        const cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
+        const fmt = (d: Date) => d.toISOString().slice(0,10).replace(/-/g,'');
+        while (cursor <= now) {
+          const y=cursor.getUTCFullYear(), m=cursor.getUTCMonth();
+          const first = new Date(Math.max(start.getTime(),Date.UTC(y,m,1)));
+          const last = new Date(Math.min(now.getTime(),Date.UTC(y,m+1,0)));
+          windows.push(fmt(first)+'-'+fmt(last)); cursor.setUTCMonth(cursor.getUTCMonth()+1);
+        }
+        type Competitor = { homeAway?:string; score?:string; team?:{id?:string} };
+        type Event = { id?:string; date?:string; status?:{type?:{completed?:boolean}}; competitions?:{competitors?:Competitor[]}[] };
+        const pages = await Promise.all(windows.map(async dates => {
+          const response = await fetch('https://site.api.espn.com/apis/site/v2/sports/'+sportPaths[league]+'/scoreboard?dates='+dates+'&limit=500', {signal:AbortSignal.timeout(12000)});
+          if (!response.ok) throw new Error('ESPN scoreboard HTTP '+response.status);
+          const data = await response.json() as {events?:Event[]};
+          if (!Array.isArray(data.events)) throw new Error('ESPN scoreboard schema changed');
+          return data.events;
+        }));
+        const all = new Map<string,{id:string;date:string;home:string;away:string;hs:number;as:number}>();
+        for (const event of pages.flat()) {
+          if (!event.id || !event.date || !event.status?.type?.completed) continue;
+          const competitors=event.competitions?.[0]?.competitors || [];
+          const home=competitors.find(c=>c.homeAway==='home'),away=competitors.find(c=>c.homeAway==='away');
+          if (!home?.team?.id || !away?.team?.id || !/^\\d+$/.test(String(home.score)) || !/^\\d+$/.test(String(away.score))) continue;
+          if (![left,right].includes(home.team.id) && ![left,right].includes(away.team.id)) continue;
+          all.set(event.id,{id:event.id,date:event.date,home:home.team.id,away:away.team.id,hs:Number(home.score),as:Number(away.score)});
+        }
+        const games=[...all.values()].sort((a,b)=>b.date.localeCompare(a.date));
+        const summarizeTeam=(id:string)=>{
+          const selected=games.filter(g=>g.home===id || g.away===id).slice(0,sample);
+          const recent=selected.map(g=>{const home=g.home===id;const scored=home?g.hs:g.as,allowed=home?g.as:g.hs;return {date:g.date.slice(0,10),scored,allowed,win:scored>allowed,tie:scored===allowed};});
+          const wins=recent.filter(g=>g.win).length, ties=recent.filter(g=>g.tie).length;
+          const average=(key:'scored'|'allowed')=>recent.length?Math.round(recent.reduce((sum,g)=>sum+g[key],0)/recent.length*10)/10:null;
+          return {games:recent.length,wins,losses:recent.length-wins-ties,ties,pointsFor:average('scored'),pointsAgainst:average('allowed'),recent};
+        };
+        const a=summarizeTeam(left),b=summarizeTeam(right);
+        const direct=games.filter(g=>(g.home===left&&g.away===right)||(g.home===right&&g.away===left)).slice(0,sample);
+        const h2h={games:direct.length,leftWins:direct.filter(g=>(g.home===left?g.hs:g.as)>(g.home===left?g.as:g.hs)).length,rightWins:direct.filter(g=>(g.home===right?g.hs:g.as)>(g.home===right?g.as:g.hs)).length,ties:direct.filter(g=>g.hs===g.as).length,meetings:direct.map(g=>({date:g.date.slice(0,10),leftScore:g.home===left?g.hs:g.as,rightScore:g.home===right?g.hs:g.as}))};
+        const metricProfiles:Record<string,{unit:string;formMetrics:string[];advancedMetrics:string[]}>={
+          nfl:{unit:'points',formMetrics:['pointsFor','pointsAgainst','wins','losses','ties'],advancedMetrics:['yardsPerPlay','passingYards','rushingYards','turnovers','thirdDownEfficiency']},
+          ncaaf:{unit:'points',formMetrics:['pointsFor','pointsAgainst','wins','losses','ties'],advancedMetrics:['yardsPerPlay','passingYards','rushingYards','turnovers','thirdDownEfficiency']},
+          nhl:{unit:'goals',formMetrics:['pointsFor','pointsAgainst','wins','losses'],advancedMetrics:['shotsOnGoal','savePercentage','powerPlayPercentage','penaltyKillPercentage']},
+          mlb:{unit:'runs',formMetrics:['pointsFor','pointsAgainst','wins','losses'],advancedMetrics:['hits','earnedRunAverage','whip','onBasePercentage','bullpenEra']},
+          wnba:{unit:'points',formMetrics:['pointsFor','pointsAgainst','wins','losses'],advancedMetrics:['fieldGoalPercentage','rebounds','assists','turnovers']},
+          ncaam:{unit:'points',formMetrics:['pointsFor','pointsAgainst','wins','losses'],advancedMetrics:['fieldGoalPercentage','rebounds','assists','turnovers','offensiveEfficiency']}
+        };
+        const profile=metricProfiles[league];
+        if (!a.games || !b.games) return json({error:'Insufficient completed games returned by ESPN for one or both teams.'},502);
+        return json({source:'ESPN public scoreboard',league,fetchedAt:new Date().toISOString(),sample,left:a,right:b,h2h,metricProfile:{unit:profile.unit,available:profile.formMetrics,unavailable:profile.advancedMetrics},partial:a.games<sample||b.games<sample,note:'Completed games within the available date window. Public ESPN date ranges may be truncated; historical coverage is not guaranteed.'});
+      } catch(e) { return json({error:e instanceof Error?e.message:'ESPN comparison unavailable'},502); }
+    }
+    if (url.pathname.startsWith('/api/leagues/')) {
+      if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
+      const match = new RegExp('^/api/leagues/(nfl|nhl|mlb|wnba|ncaaf|ncaam)/teams$').exec(url.pathname);
+      if (!match) return json({ error: 'Unknown league' }, 404);
+      const leagues: Record<string, string> = { nfl: 'football/nfl', nhl: 'hockey/nhl', mlb: 'baseball/mlb', wnba: 'basketball/wnba', ncaaf: 'football/college-football', ncaam: 'basketball/mens-college-basketball' };
+      try {
+        const response = await fetch('https://site.api.espn.com/apis/site/v2/sports/' + leagues[match[1]] + '/teams?limit=500', { signal: AbortSignal.timeout(12000), headers: { Accept: 'application/json' } });
+        if (!response.ok) throw new Error('ESPN teams HTTP ' + response.status);
+        const payload = await response.json() as { sports?: { leagues?: { teams?: { team?: { id?: string; displayName?: string; abbreviation?: string } }[] }[] }[] };
+        const entries = payload.sports?.[0]?.leagues?.[0]?.teams;
+        if (!Array.isArray(entries)) throw new Error('ESPN teams schema changed');
+        const teams = entries.map(item => item.team).filter((team): team is { id: string; displayName: string; abbreviation?: string } => Boolean(team?.id && team.displayName))
+          .map(team => ({ id: team.id, full_name: team.displayName, abbreviation: team.abbreviation || '' }));
+        if (!teams.length) throw new Error('ESPN returned no teams');
+        return json({ source: 'ESPN public team directory', league: match[1], fetchedAt: new Date().toISOString(), teams });
+      } catch (e) { return json({ error: e instanceof Error ? e.message : 'ESPN team directory unavailable' }, 502); }
+    }
     if (url.pathname.startsWith('/api/nba/')) {
       if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
       if (url.pathname === '/api/nba/teams') return json({ source: 'NBA team directory', teams: NBA_TEAMS });
-      const hasBdlKey = typeof env.BALLDONTLIE_API_KEY === 'string' && Boolean(env.BALLDONTLIE_API_KEY.trim());
+      const bdlKey = typeof env.BALLDONTLIE_API_KEY === 'string' && env.BALLDONTLIE_API_KEY.trim() ? env.BALLDONTLIE_API_KEY : null;
+       const hasBdlKey = bdlKey !== null;
       try {
         if (url.pathname === '/api/nba/games') {
           const date = url.searchParams.get('date') || new Date().toISOString().slice(0, 10);
           if (!validDate(date)) return json({ error: 'Invalid date' }, 400);
-          if (!hasBdlKey) return json({ message: 'Dated games endpoint requires BALLDONTLIE; use team comparison for ESPN fallback.' }, 503);
-          const data = await bdl('games?dates[]=' + encodeURIComponent(date) + '&per_page=100', env.BALLDONTLIE_API_KEY);
+          if (!bdlKey) return json({ message: 'Dated games endpoint requires BALLDONTLIE; use team comparison for ESPN fallback.' }, 503);
+          const data = await bdl('games?dates[]=' + encodeURIComponent(date) + '&per_page=100', bdlKey);
           return json({ source: 'BALLDONTLIE NBA API', fetchedAt: new Date().toISOString(), games: data.data });
         }
         if (url.pathname === '/api/nba/compare') {
           const left = Number(url.searchParams.get('left')), right = Number(url.searchParams.get('right'));
           const sample = Number(url.searchParams.get('sample') || 10);
           if (!Number.isInteger(left) || !Number.isInteger(right) || left <= 0 || right <= 0 || left === right || ![5,10,20].includes(sample)) return json({ error: 'Select two different teams and a valid sample.' }, 400);
-          if (!hasBdlKey) return json(await espnComparison(left, right, sample));
+          if (!bdlKey) return json(await espnComparison(left, right, sample));
           const end = new Date(), start = new Date(end.getTime() - 180 * 86400000);
           const query = (id: number) => 'games?team_ids[]=' + id + '&start_date=' + start.toISOString().slice(0,10) + '&end_date=' + end.toISOString().slice(0,10) + '&per_page=100';
-          const [a,b] = await Promise.all([bdl(query(left), env.BALLDONTLIE_API_KEY), bdl(query(right), env.BALLDONTLIE_API_KEY)]);
+          const [a,b] = await Promise.all([bdl(query(left), bdlKey), bdl(query(right), bdlKey)]);
           const leftGames = a.data as Game[], rightGames = b.data as Game[];
           const leftStats = summarize(leftGames, left, sample), rightStats = summarize(rightGames, right, sample);
           return json({ source: 'BALLDONTLIE NBA API', fetchedAt: new Date().toISOString(), sample, left: leftStats, right: rightStats, partial: Boolean(a.meta?.next_cursor || b.meta?.next_cursor), note: 'Completed games in the last 180 days. Results limited to the first 100 provider records per team; coverage may be incomplete. No injury or player statistics included.' });
