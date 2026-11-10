@@ -14,7 +14,7 @@ interface Comparison { source: string; fetchedAt: string; sample: number; left: 
   <main class="workbench">
     <header><div class="eyebrow">OPEN SPORTS INTELLIGENCE</div><h1>Sports Research Workbench</h1><p>Manual, sport-specific research. No automated scanning.</p></header>
     <nav class="sports" aria-label="Workspaces"><button [class.selected]="tab() === 'research'" (click)="chooseTab('research')">Research</button><button [class.selected]="tab() === 'markets'" (click)="chooseTab('markets')">Market Scanner</button></nav>
-    <ng-container *ngIf="tab() === 'research'"><nav class="sports" aria-label="Sports"><button *ngFor="let league of availableLeagues" [class.selected]="sport() === league.id" (click)="chooseSport(league.id)">{{ league.label }}</button></nav>
+    <ng-container *ngIf="tab() === 'research'"><nav class="sports" aria-label="Sports"><button *ngFor="let league of availableLeagues" [class.selected]="sport() === league.id" (click)="chooseSport(league.id)"><svg *ngIf="league.id === 'tennis'" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" style="vertical-align:-3px;margin-right:5px"><circle cx="12" cy="12" r="10" fill="#c6e948" stroke="#75962b" stroke-width="1"/><path d="M5.2 4.6C11 8 11 16 5.2 19.4M18.8 4.6C13 8 13 16 18.8 19.4" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>{{ league.label }}</button></nav>
     <section class="panel" *ngIf="sport() !== 'tennis'">
       <div class="eyebrow">{{ sport().toUpperCase() }} / TEAM COMPARISON</div><h2>Team vs team</h2>
       <p>Select two teams and a historical sample. The comparison calculates completed-game win/loss and scoring averages.</p>
@@ -56,7 +56,7 @@ interface Comparison { source: string; fetchedAt: string; sample: number; left: 
       <button class="run" [disabled]="scanLoading() || provider() === 'novig' || !validPriceRange()" (click)="scan()">{{ scanLoading() ? 'Scanning…' : 'Scan now →' }}</button>
       <p *ngIf="scanError()" class="error">{{ scanError() }}</p>
       <ng-container *ngIf="scanResult() as result"><p class="meta">{{ result.source }} · {{ result.scannedAt | date:'medium' }} · {{ result.markets.length }} matching contracts · {{ result.sportsEvents }} sports events across {{ result.pagesScanned }} pages</p><p *ngIf="result.markets.length === 0" class="error">No matching contracts found in the scanned pages. Try widening the price range; the scan may not cover every sports event.</p><p class="hint">{{ result.note }} <strong *ngIf="result.partialCoverage">More pages exist; this snapshot is incomplete.</strong></p>
-        <a *ngFor="let m of result.markets" class="stats market-result" [href]="marketUrl(m)" target="_blank" rel="noopener noreferrer" [attr.aria-label]="'Open Kalshi market ' + m.title"><strong>{{ m.event }} ↗</strong><p>{{ m.title }} · {{ m.ticker }} · {{ m.side }} ask {{ m.askCents }}¢</p><p>YES bid {{ m.yesBid ?? '—' }} · YES ask {{ m.yesAsk ?? '—' }} · NO ask {{ m.noAsk ?? '—' }} · Last {{ m.last ?? '—' }} · 24h volume {{ m.volume24h ?? '—' }}</p></a>
+        <a *ngFor="let m of result.markets" class="stats market-result" [href]="marketUrl(m)" target="_blank" rel="noopener noreferrer" [attr.aria-label]="'Open Kalshi market ' + m.title"><div class="market-result-heading"><strong>{{ m.event }} ↗</strong><span class="market-percentage" [attr.aria-label]="m.side + ' ask price ' + m.askCents + ' percent'">{{ m.askCents }}%</span></div><p>{{ m.title }} · {{ m.ticker }} · {{ m.side }} ask {{ m.askCents }}¢</p><p>YES bid {{ m.yesBid ?? '—' }} · YES ask {{ m.yesAsk ?? '—' }} · NO ask {{ m.noAsk ?? '—' }} · Last {{ m.last ?? '—' }} · 24h volume {{ m.volume24h ?? '—' }}</p></a>
       </ng-container>
     </section>
     <footer class="build-footer" aria-label="Application build version">Build {{ buildId }}</footer>
@@ -85,6 +85,7 @@ interface Comparison { source: string; fetchedAt: string; sample: number; left: 
     .dual-range input[type=range]:first-of-type{z-index:2}
     .dual-range input[type=range]:last-of-type{z-index:3}
     .market-result{display:block;text-decoration:none;color:inherit;margin-top:10px;border:1px solid #354359;transition:border-color .15s,background .15s}.market-result:hover,.market-result:focus-visible{border-color:#69d8d0;background:#20354a;outline-offset:2px}.market-result strong{color:#85e6dc}
+    .market-result-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.market-percentage{font-size:clamp(24px,3vw,34px);line-height:1;font-weight:800;font-variant-numeric:tabular-nums;color:#85e6dc;white-space:nowrap}
     .stats p{font-size:14px;border-bottom:1px solid #29394e;padding-bottom:6px}@media(max-width:650px){.columns{grid-template-columns:1fr}}
   `]
 })
@@ -114,7 +115,7 @@ export class AppComponent {
     finally { if (id === this.scanId) this.scanLoading.set(false); }
   }
   readonly buildId = BUILD_ID;
-  readonly availableLeagues: { id: Sport; label: string }[] = [{id:'nba',label:'🏀 NBA'},{id:'nfl',label:'🏈 NFL'},{id:'nhl',label:'🏒 NHL'},{id:'mlb',label:'⚾ MLB'},{id:'wnba',label:'🏀 WNBA'},{id:'ncaaf',label:'🏈 NCAA Football'},{id:'ncaam',label:'🏀 NCAA Basketball'},{id:'tennis',label:'🎾 Tennis'}];
+  readonly availableLeagues: { id: Sport; label: string }[] = [{id:'nba',label:'🏀 NBA'},{id:'nfl',label:'🏈 NFL'},{id:'nhl',label:'🏒 NHL'},{id:'mlb',label:'⚾ MLB'},{id:'wnba',label:'🏀 WNBA'},{id:'ncaaf',label:'🏈 NCAA Football'},{id:'ncaam',label:'🏀 NCAA Basketball'},{id:'tennis',label:'Tennis'}];
   readonly scanLeagues: { id: ScanLeague; label: string }[] = [{id:'all',label:'All leagues'},{id:'nba',label:'NBA'},{id:'nfl',label:'NFL'},{id:'nhl',label:'NHL'},{id:'mlb',label:'MLB'},{id:'wnba',label:'WNBA'},{id:'ncaaf',label:'NCAA Football'},{id:'ncaam',label:'NCAA Basketball'}];
   readonly sport = signal<Sport>('nba');
   readonly scanLeague = signal<ScanLeague>('nba');
