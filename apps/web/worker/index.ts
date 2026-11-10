@@ -1,6 +1,8 @@
-interface Environment { ASSETS: { fetch(request: Request): Promise<Response> }; BALLDONTLIE_API_KEY?: string }
+import { sharedScan, uncachedScan, type ScanSnapshot, type ScanDatabase } from './scan-cache.ts';
+interface Environment { ASSETS: { fetch(request: Request): Promise<Response> }; BALLDONTLIE_API_KEY?: string; DB?: ScanDatabase }
 type Team = { id: number; full_name: string };
 type Game = { id: number; date: string; status: string; home_team: Team; visitor_team: Team; home_team_score: number; visitor_team_score: number };
+const NBA_TEAMS: Team[] = [{"id":1,"full_name":"Atlanta Hawks"},{"id":2,"full_name":"Boston Celtics"},{"id":3,"full_name":"Brooklyn Nets"},{"id":4,"full_name":"Charlotte Hornets"},{"id":5,"full_name":"Chicago Bulls"},{"id":6,"full_name":"Cleveland Cavaliers"},{"id":7,"full_name":"Dallas Mavericks"},{"id":8,"full_name":"Denver Nuggets"},{"id":9,"full_name":"Detroit Pistons"},{"id":10,"full_name":"Golden State Warriors"},{"id":11,"full_name":"Houston Rockets"},{"id":12,"full_name":"Indiana Pacers"},{"id":13,"full_name":"LA Clippers"},{"id":14,"full_name":"Los Angeles Lakers"},{"id":15,"full_name":"Memphis Grizzlies"},{"id":16,"full_name":"Miami Heat"},{"id":17,"full_name":"Milwaukee Bucks"},{"id":18,"full_name":"Minnesota Timberwolves"},{"id":19,"full_name":"New Orleans Pelicans"},{"id":20,"full_name":"New York Knicks"},{"id":21,"full_name":"Oklahoma City Thunder"},{"id":22,"full_name":"Orlando Magic"},{"id":23,"full_name":"Philadelphia 76ers"},{"id":24,"full_name":"Phoenix Suns"},{"id":25,"full_name":"Portland Trail Blazers"},{"id":26,"full_name":"Sacramento Kings"},{"id":27,"full_name":"San Antonio Spurs"},{"id":28,"full_name":"Toronto Raptors"},{"id":29,"full_name":"Utah Jazz"},{"id":30,"full_name":"Washington Wizards"}];
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
 function validDate(value: string): boolean { return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value)); }
 async function bdl(path: string, key: string): Promise<{ data: unknown[]; meta?: { next_cursor?: number | null } }> {
@@ -33,11 +35,12 @@ export default {
       if (!Number.isInteger(min) || !Number.isInteger(max) || min < 1 || max > 99 || min > max)
         return json({ error: 'Specify a valid price range from 1 to 99 cents, minimum not exceeding maximum.' }, 400);
       try {
-        // Deliberately bounded, on-demand only. No cron, D1 writes, or implicit polling.
+        const fetchSnapshot = async (scanSignal: AbortSignal): Promise<ScanSnapshot> => {
+        // On-demand only. A single D1 snapshot is shared across users and price ranges.
         const endpoint = 'https://external-api.kalshi.com/trade-api/v2';
         type Quote = { ticker?: string; title?: string; status?: string; yes_bid_dollars?: string; yes_ask_dollars?: string; no_ask_dollars?: string; last_price_dollars?: string; volume_24h_fp?: string };
         type Event = { event_ticker?: string; title?: string; category?: string; markets?: Quote[] };
-        const markets: Array<{ ticker: string; event: string; title: string; side: 'YES' | 'NO'; askCents: number; yesBid: string | null; yesAsk: string | null; noAsk: string | null; last: string | null; volume24h: string | null }> = [];
+        const markets: ScanSnapshot['markets'] = [];
         let cursor = ''; let pagesScanned = 0; let sportsEvents = 0; let nestedMarkets = 0; let quotedMarkets = 0;
         const sports: Event[] = [];
         // Collect sports events first. Event listings are not guaranteed to contain usable quote data.
@@ -45,7 +48,7 @@ export default {
           const query = new URLSearchParams({ status: 'open', limit: '200', with_nested_markets: 'true' });
           if (cursor) query.set('cursor', cursor);
           const response = await fetch(endpoint + '/events?' + query.toString(), {
-            headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(13000)
+            headers: { Accept: 'application/json' }, signal: AbortSignal.any([scanSignal, AbortSignal.timeout(13000)])
           });
           if (!response.ok) throw new Error('Kalshi events HTTP ' + response.status);
           const page = await response.json() as { events?: Event[]; cursor?: string };
@@ -72,7 +75,7 @@ export default {
           const query = new URLSearchParams({ status: 'open', limit: '1000' });
           if (marketCursor) query.set('cursor', marketCursor);
           const response = await fetch(endpoint + '/markets?' + query.toString(), {
-            headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(13000)
+            headers: { Accept: 'application/json' }, signal: AbortSignal.any([scanSignal, AbortSignal.timeout(13000)])
           });
           if (response.status === 429) { rateLimited = true; break; }
           if (!response.ok) throw new Error('Kalshi markets HTTP ' + response.status);
@@ -94,7 +97,6 @@ export default {
             if (typeof ask !== 'string' || !/^\d+(?:\.\d+)?$/.test(ask)) continue;
             quotedMarkets++;
             const cents = Math.round(Number(ask) * 100);
-            if (cents < min || cents > max) continue;
             markets.push({ ticker: market.ticker, event: eventTitles.get(market.event_ticker) || market.event_ticker,
               title: market.title || market.ticker, side, askCents: cents,
               yesBid: market.yes_bid_dollars ?? null, yesAsk: market.yes_ask_dollars ?? null,
@@ -102,20 +104,23 @@ export default {
               volume24h: market.volume_24h_fp ?? null });
           }
         }
+        scanSignal.throwIfAborted();
         markets.sort((a, b) => a.askCents - b.askCents || a.event.localeCompare(b.event));
-        return json({ source: 'Kalshi public API', provider, scannedAt: new Date().toISOString(),
-          min, max, sportsEvents, pagesScanned, nestedMarkets, quotedMarkets, fetchedMarkets: results.reduce((n, group) => n + group.length, 0), marketPagesScanned, rateLimited, markets, partialCoverage: Boolean(cursor || marketCursor || rateLimited),
-          note: 'Sports-only, on-demand scan. Quotes are displayed by contract side (YES/NO) at the current ask. Up to five event pages and ten market pages are checked. Coverage is partial when additional pages exist or rate limiting occurs.' });
+        return { source: 'Kalshi public API', provider, scannedAt: new Date().toISOString(),
+          sportsEvents, pagesScanned, nestedMarkets, quotedMarkets, fetchedMarkets: results.reduce((n, group) => n + group.length, 0), marketPagesScanned, rateLimited, markets, partialCoverage: Boolean(cursor || marketCursor || rateLimited),
+          note: 'Sports-only, on-demand scan. Quotes are displayed by contract side (YES/NO) at the current ask. Up to five event pages and ten market pages are checked. Coverage is partial when additional pages exist or rate limiting occurs.' };
+        };
+        const result = env.DB
+          ? await sharedScan(env.DB, min, max, fetchSnapshot)
+          : uncachedScan(await fetchSnapshot(request.signal), min, max);
+        return json(result);
       } catch (e) { return json({ error: e instanceof Error ? e.message : 'Kalshi feed unavailable' }, 502); }
     }
     if (url.pathname.startsWith('/api/nba/')) {
       if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
-      if (!env.BALLDONTLIE_API_KEY) return json({ message: 'BALLDONTLIE_API_KEY Worker secret is missing.' }, 503);
+      if (url.pathname === '/api/nba/teams') return json({ source: 'NBA team directory', teams: NBA_TEAMS });
+      if (!env.BALLDONTLIE_API_KEY) return json({ message: 'NBA comparisons require BALLDONTLIE_API_KEY; team selection is available.' }, 503);
       try {
-        if (url.pathname === '/api/nba/teams') {
-          const data = await bdl('teams', env.BALLDONTLIE_API_KEY);
-          return json({ source: 'BALLDONTLIE NBA API', fetchedAt: new Date().toISOString(), teams: data.data });
-        }
         if (url.pathname === '/api/nba/games') {
           const date = url.searchParams.get('date') || new Date().toISOString().slice(0, 10);
           if (!validDate(date)) return json({ error: 'Invalid date' }, 400);
