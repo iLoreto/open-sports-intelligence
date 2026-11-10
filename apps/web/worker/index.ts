@@ -165,6 +165,23 @@ export default {
         return json(result);
       } catch (e) { return json({ error: e instanceof Error ? e.message : 'Kalshi feed unavailable' }, 502); }
     }
+    if (url.pathname.startsWith('/api/leagues/')) {
+      if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
+      const match = /^\\/api\\/leagues\\/(nfl|nhl|mlb|wnba|ncaaf|ncaam)\\/teams$/.exec(url.pathname);
+      if (!match) return json({ error: 'Unknown league' }, 404);
+      const leagues: Record<string, string> = { nfl: 'football/nfl', nhl: 'hockey/nhl', mlb: 'baseball/mlb', wnba: 'basketball/wnba', ncaaf: 'football/college-football', ncaam: 'basketball/mens-college-basketball' };
+      try {
+        const response = await fetch('https://site.api.espn.com/apis/site/v2/sports/' + leagues[match[1]] + '/teams?limit=500', { signal: AbortSignal.timeout(12000), headers: { Accept: 'application/json' } });
+        if (!response.ok) throw new Error('ESPN teams HTTP ' + response.status);
+        const payload = await response.json() as { sports?: { leagues?: { teams?: { team?: { id?: string; displayName?: string; abbreviation?: string } }[] }[] }[] };
+        const entries = payload.sports?.[0]?.leagues?.[0]?.teams;
+        if (!Array.isArray(entries)) throw new Error('ESPN teams schema changed');
+        const teams = entries.map(item => item.team).filter((team): team is { id: string; displayName: string; abbreviation?: string } => Boolean(team?.id && team.displayName))
+          .map(team => ({ id: team.id, full_name: team.displayName, abbreviation: team.abbreviation || '' }));
+        if (!teams.length) throw new Error('ESPN returned no teams');
+        return json({ source: 'ESPN public team directory', league: match[1], fetchedAt: new Date().toISOString(), teams });
+      } catch (e) { return json({ error: e instanceof Error ? e.message : 'ESPN team directory unavailable' }, 502); }
+    }
     if (url.pathname.startsWith('/api/nba/')) {
       if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
       if (url.pathname === '/api/nba/teams') return json({ source: 'NBA team directory', teams: NBA_TEAMS });
