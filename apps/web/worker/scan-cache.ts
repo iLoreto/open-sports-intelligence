@@ -1,5 +1,7 @@
 export const SNAPSHOT_TTL_MS = 60_000;
 export const LEASE_MS = 120_000;
+// R2: stop all upstream work before a lease can expire; leave room for D1 commit.
+export const SCAN_DEADLINE_MS = 90_000;
 export const SCAN_KEY = 'kalshi:sports:open:v1';
 
 export interface D1Statement {
@@ -34,7 +36,7 @@ async function read(db: ScanDatabase): Promise<Row | null> {
   return db.prepare('SELECT snapshot, captured_at, expires_at, lease_until FROM scan_cache WHERE cache_key = ?').bind(SCAN_KEY).first<Row>();
 }
 /** A single provider snapshot serves every price range; the SQL lease serializes concurrent Workers. */
-export async function sharedScan(db: ScanDatabase, min: number, max: number, fetchSnapshot: () => Promise<ScanSnapshot>,
+export async function sharedScan(db: ScanDatabase, min: number, max: number, fetchSnapshot: (signal: AbortSignal) => Promise<ScanSnapshot>,
   options: { now?: () => number; wait?: (ms: number) => Promise<void>; token?: string; maxWaits?: number } = {}): Promise<ScanOutput> {
   const now = options.now ?? Date.now;
   const wait = options.wait ?? sleep;
@@ -47,15 +49,18 @@ export async function sharedScan(db: ScanDatabase, min: number, max: number, fet
   const claim = await db.prepare(`INSERT INTO scan_cache (cache_key, lease_token, lease_until)
     VALUES (?, ?, ?) ON CONFLICT(cache_key) DO UPDATE SET
     lease_token = excluded.lease_token, lease_until = excluded.lease_until
-    WHERE scan_cache.lease_until IS NULL OR scan_cache.lease_until <= ?`)
-    .bind(SCAN_KEY, token, leaseTime + LEASE_MS, leaseTime).run();
+    WHERE (scan_cache.lease_until IS NULL OR scan_cache.lease_until <= ?)
+      AND (scan_cache.expires_at IS NULL OR scan_cache.expires_at <= ?)`)
+    .bind(SCAN_KEY, token, leaseTime + LEASE_MS, leaseTime, leaseTime).run();
   if (claim.meta.changes > 0) {
     try {
-      const snapshot = await fetchSnapshot();
+      const deadline = AbortSignal.timeout(SCAN_DEADLINE_MS);
+      const snapshot = await fetchSnapshot(deadline);
+      deadline.throwIfAborted();
       const finished = now();
       const write = await db.prepare(`UPDATE scan_cache SET snapshot = ?, captured_at = ?, expires_at = ?,
-        lease_token = NULL, lease_until = NULL WHERE cache_key = ? AND lease_token = ?`)
-        .bind(JSON.stringify(snapshot), finished, finished + SNAPSHOT_TTL_MS, SCAN_KEY, token).run();
+        lease_token = NULL, lease_until = NULL WHERE cache_key = ? AND lease_token = ? AND lease_until > ?`)
+        .bind(JSON.stringify(snapshot), finished, finished + SNAPSHOT_TTL_MS, SCAN_KEY, token, finished).run();
       if (write.meta.changes !== 1) throw new Error('Scan lease expired before the snapshot could be saved');
       return filter(snapshot, min, max, 'miss', finished);
     } catch (error) {
@@ -71,6 +76,7 @@ export async function sharedScan(db: ScanDatabase, min: number, max: number, fet
     if (row?.snapshot && (row.expires_at ?? 0) > now()) {
       return filter(JSON.parse(row.snapshot) as ScanSnapshot, min, max, 'hit', now());
     }
+    if (!row?.lease_until || row.lease_until <= now()) break;
   }
   throw new Error('A shared scan is still running. Please retry shortly.');
 }

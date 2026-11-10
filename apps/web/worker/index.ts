@@ -35,7 +35,7 @@ export default {
       if (!Number.isInteger(min) || !Number.isInteger(max) || min < 1 || max > 99 || min > max)
         return json({ error: 'Specify a valid price range from 1 to 99 cents, minimum not exceeding maximum.' }, 400);
       try {
-        const fetchSnapshot = async (): Promise<ScanSnapshot> => {
+        const fetchSnapshot = async (scanSignal: AbortSignal): Promise<ScanSnapshot> => {
         // On-demand only. A single D1 snapshot is shared across users and price ranges.
         const endpoint = 'https://external-api.kalshi.com/trade-api/v2';
         type Quote = { ticker?: string; title?: string; status?: string; yes_bid_dollars?: string; yes_ask_dollars?: string; no_ask_dollars?: string; last_price_dollars?: string; volume_24h_fp?: string };
@@ -48,7 +48,7 @@ export default {
           const query = new URLSearchParams({ status: 'open', limit: '200', with_nested_markets: 'true' });
           if (cursor) query.set('cursor', cursor);
           const response = await fetch(endpoint + '/events?' + query.toString(), {
-            headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(13000)
+            headers: { Accept: 'application/json' }, signal: AbortSignal.any([scanSignal, AbortSignal.timeout(13000)])
           });
           if (!response.ok) throw new Error('Kalshi events HTTP ' + response.status);
           const page = await response.json() as { events?: Event[]; cursor?: string };
@@ -74,7 +74,7 @@ export default {
         const eventTickers = [...eventTitles.keys()];
         let nextEventIndex = 0;
         const worker = async () => {
-          while (nextEventIndex < eventTickers.length) {
+          while (!scanSignal.aborted && nextEventIndex < eventTickers.length) {
             const eventTicker = eventTickers[nextEventIndex++];
             const collected: (Quote & { event_ticker?: string })[] = [];
             let marketCursor = '';
@@ -82,7 +82,7 @@ export default {
               const query = new URLSearchParams({ status: 'open', limit: '1000', event_ticker: eventTicker });
               if (marketCursor) query.set('cursor', marketCursor);
               const response = await fetch(endpoint + '/markets?' + query.toString(), {
-                headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(13000)
+                headers: { Accept: 'application/json' }, signal: AbortSignal.any([scanSignal, AbortSignal.timeout(13000)])
               });
               if (!response.ok) throw new Error('Kalshi markets HTTP ' + response.status + ' for ' + eventTicker);
               const page = await response.json() as { markets?: (Quote & { event_ticker?: string })[]; cursor?: string };
@@ -113,6 +113,7 @@ export default {
               volume24h: market.volume_24h_fp ?? null });
           }
         }
+        scanSignal.throwIfAborted();
         markets.sort((a, b) => a.askCents - b.askCents || a.event.localeCompare(b.event));
         return { source: 'Kalshi public API', provider, scannedAt: new Date().toISOString(),
           sportsEvents, pagesScanned, nestedMarkets, quotedMarkets, fetchedMarkets: results.reduce((n, group) => n + group.length, 0), markets, partialCoverage: Boolean(cursor),

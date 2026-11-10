@@ -14,7 +14,7 @@ If DB is not bound, the existing scan remains available but the response explici
 ## Semantics
 - Cache key: `kalshi:sports:open:v1`. Provider, sport and query scope must change the key if scan coverage changes.
 - TTL: 60 seconds from successful write. The original `scannedAt` is preserved and returned to the client.
-- Lease: 120 seconds; waiting requests poll for a completed snapshot, then receive a retryable error rather than issuing duplicate scans.
+- Lease: 120 seconds; R2 review fixes add an atomic freshness predicate to the lease claim and a 90-second scan-wide abort signal passed into every Kalshi fetch. Expired lease owners cannot commit snapshots. Waiting requests poll for a completed snapshot, then receive a retryable error rather than issuing duplicate scans.
 - A failed scan releases its lease. Stale data is not silently substituted.
 - Existing bounded pagination and partial coverage metadata are retained; a cached partial scan remains partial.
 - D1 rows may be pruned periodically; one current row is used per scan scope.
