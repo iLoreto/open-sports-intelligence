@@ -10,8 +10,9 @@ async function espnComparison(left: number, right: number, sample: number) {
   // ESPN scoreboard rejects large date-range requests (HTTP 400). Query each
   // selected team's season schedule instead, using ESPN's own NBA team IDs.
   const currentYear = new Date().getUTCFullYear();
-  type EspnCompetitor = { homeAway?: string; score?: string; team?: { id?: string; abbreviation?: string } };
-  type EspnEvent = { id?: string; date?: string; status?: { type?: { completed?: boolean } }; competitions?: { competitors?: EspnCompetitor[] }[] };
+  type EspnScore = string | number | { value?: number | string; displayValue?: string };
+  type EspnCompetitor = { homeAway?: string; score?: EspnScore; team?: { id?: string; abbreviation?: string } };
+  type EspnEvent = { id?: string; date?: string; status?: { type?: { completed?: boolean } }; competitions?: { status?: { type?: { completed?: boolean } }; competitors?: EspnCompetitor[] }[] };
   const appTeamToEspnPath = (id: number): string | null => {
     if (!Number.isInteger(id) || id < 1 || id > NBA_ABBREVIATIONS.length) return null;
     return NBA_ABBREVIATIONS[id - 1].toLowerCase();
@@ -32,9 +33,20 @@ async function espnComparison(left: number, right: number, sample: number) {
   // Normalize ESPN abbreviations to the app's stable NBA team IDs.
   ids.set('GSW', 10); ids.set('NOP', 19); ids.set('NYK', 20); ids.set('OKC', 21);
   ids.set('SAS', 27); ids.set('UTA', 29); ids.set('WAS', 30);
+  const scoreValue = (score: EspnScore | undefined): number => {
+    if (typeof score === 'number') return score;
+    if (typeof score === 'string') return Number(score);
+    if (score && typeof score === 'object') {
+      if (typeof score.value === 'number') return score.value;
+      if (typeof score.value === 'string') return Number(score.value);
+      if (typeof score.displayValue === 'string') return Number(score.displayValue);
+    }
+    return Number.NaN;
+  };
   const games = new Map<string, Game>();
   for (const page of pages) for (const event of page.events || []) {
-    if (!event.id || !event.date || !event.status?.type?.completed) continue;
+    const completed = event.status?.type?.completed ?? event.competitions?.[0]?.status?.type?.completed;
+    if (!event.id || !event.date || !completed) continue;
     const competitors = event.competitions?.[0]?.competitors || [];
     const home = competitors.find(c => c.homeAway === 'home'), away = competitors.find(c => c.homeAway === 'away');
     if (!home || !away) continue;
@@ -44,7 +56,7 @@ async function espnComparison(left: number, right: number, sample: number) {
     const awayById = Number(away.team?.id);
     const homeId = homeByAbbreviation || (Number.isInteger(homeById) && homeById >= 1 && homeById <= 30 ? homeById : undefined);
     const awayId = awayByAbbreviation || (Number.isInteger(awayById) && awayById >= 1 && awayById <= 30 ? awayById : undefined);
-    const hs = Number(home.score), as = Number(away.score);
+    const hs = scoreValue(home.score), as = scoreValue(away.score);
     if (!homeId || !awayId || !Number.isFinite(hs) || !Number.isFinite(as)) continue;
     if (homeId !== left && awayId !== left && homeId !== right && awayId !== right) continue;
     games.set(event.id, { id: Number(event.id), date: event.date.slice(0, 10), status: 'Final', home_team: { id: homeId, full_name: '' }, visitor_team: { id: awayId, full_name: '' }, home_team_score: hs, visitor_team_score: as });
