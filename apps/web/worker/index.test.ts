@@ -118,6 +118,13 @@ test('market scan returns non-empty moneyline results and honors league filter',
 		status: 'open',
 		yes_ask_dollars: '0.20',
 		no_ask_dollars: '0.80'
+	  }, {
+		ticker: 'NBA-BOS-PHI-ML',
+		event_ticker: 'KX_UNKNOWN_NBA',
+		title: 'Yes Boston',
+		status: 'open',
+		yes_ask_dollars: '0.54',
+		no_ask_dollars: '0.46'
 	  }], cursor: '' });
 	}
 
@@ -129,9 +136,11 @@ test('market scan returns non-empty moneyline results and honors league filter',
 	assert.equal(nbaResponse.status, 200);
 	const nbaBody = await nbaResponse.json() as any;
 	assert.ok(Array.isArray(nbaBody.markets));
-	assert.equal(nbaBody.markets.length, 2);
+	assert.equal(nbaBody.markets.length, 4);
 	assert.deepEqual(nbaBody.markets.map((market: any) => [market.ticker, market.side, market.askCents]), [
 	  ['NBA-1-ML', 'NO', 42],
+	  ['NBA-BOS-PHI-ML', 'NO', 46],
+	  ['NBA-BOS-PHI-ML', 'YES', 54],
 	  ['NBA-1-ML', 'YES', 58]
 	]);
 

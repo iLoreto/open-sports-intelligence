@@ -100,7 +100,8 @@ export default {
         if (/\bnfl\b|super bowl|pro football/.test(text)) return 'nfl';
         if (/\bnhl\b|stanley cup|hockey/.test(text)) return 'nhl';
         if (/\bmlb\b|world series|baseball/.test(text)) return 'mlb';
-        if (/\bnba\b|basketball|celtics|76ers|lakers|warriors|knicks|bulls|bucks|heat|nets|suns|mavericks|spurs|raptors|cavaliers|nuggets|timberwolves|pelicans|thunder|magic|grizzlies|hawks|hornets|pistons|pacers|rockets|clippers|trail blazers|wizards|jazz|kings|bos|phi\b/.test(text)) return 'nba';
+        if (/\bnba\b|celtics|76ers|lakers|warriors|knicks|bulls|bucks|heat|nets|suns|mavericks|spurs|raptors|cavaliers|nuggets|timberwolves|pelicans|thunder|magic|grizzlies|hawks|hornets|pistons|pacers|rockets|clippers|trail blazers|wizards|jazz|kings|\bbos\b|\bphi\b|boston pro basketball|philadelphia pro basketball/.test(text)) return 'nba';
+        if (/wins by over\s+\d+(?:\.\d+)?\s+points/.test(text) && /\b(boston|philadelphia|new york|miami|phoenix|orlando|oklahoma city|san antonio|toronto|utah|washington|chicago|cleveland|dallas|denver|detroit|houston|indiana|memphis|minnesota|new orleans|portland|sacramento|los angeles|milwaukee|atlanta|charlotte)\b/.test(text)) return 'nba';
         return null;
       };
       const leagueLabel = (league: ScanLeague): string => league.toUpperCase();
@@ -160,19 +161,30 @@ export default {
         const seen = new Set<string>();
         const isMoneylineMarket = (event: string, title: string, ticker: string): boolean => {
           const text = (event + ' ' + title).toLowerCase();
+          const titleText = title.toLowerCase().trim();
           if (text.includes(',')) return false;
           if (/\b(over|under|spread|total|handicap|alternate line|alt line)\b/.test(text)) return false;
           if (/\b(points?|yards?|rebounds?|assists?|shots?|goals?)\b/.test(text) && /\b(over|under|more|less|at least|to record)\b/.test(text)) return false;
           if (/(?:^|\s)[+-]\d+(?:\.\d+)?(?:\s|$)/.test(text)) return false;
           const matchContext = /\b(at|vs|versus|v)\b/.test(text) || /@/.test(text) || /\b(match|game)\b/.test(text);
           const winnerSignal = /\bwin(?:s|ner)?\b|\bto win\b|\bmoneyline\b|\byes\b/.test(text);
+          const simpleTeamSide = /^yes\s+[a-z0-9 .'-]+$/.test(titleText) || /^no\s+[a-z0-9 .'-]+$/.test(titleText);
           const tickerSignal = /(?:^|[-_])ml(?:$|[-_])/i.test(ticker);
-          return (matchContext && winnerSignal) || tickerSignal;
+          return (matchContext && winnerSignal) || simpleTeamSide || tickerSignal;
         };
-        const addMarket = (market: Quote & { event_ticker?: string }, event: string) => {
+        const isLeagueOutcomeContract = (event: string, title: string, ticker: string): boolean => {
+          if (inferLeague(event, title, ticker) !== selectedLeague) return false;
+          const text = (event + ' ' + title).toLowerCase();
+          const titleText = title.toLowerCase().trim();
+          if (/\b(over|under|spread|total|handicap|alternate line|alt line)\b/.test(text) && !/\bwins?\b/.test(text)) return false;
+          const teamSide = /^yes\s+[a-z0-9 .'-]+$/.test(titleText) || /^no\s+[a-z0-9 .'-]+$/.test(titleText);
+          const winnerSignal = /\bwin(?:s|ner)?\b|\bto win\b|\bmoneyline\b|\byes\b|\bno\b/.test(text);
+          return teamSide || winnerSignal;
+        };
+        const addMarket = (market: Quote & { event_ticker?: string }, event: string, mode: 'strict' | 'fallback' = 'strict') => {
           if (!market.ticker || (market.status && !['open', 'active'].includes(market.status))) return;
           const title = market.title || market.ticker;
-          if (!isMoneylineMarket(event, title, market.ticker)) return;
+          if (mode === 'strict' ? !isMoneylineMarket(event, title, market.ticker) : !isLeagueOutcomeContract(event, title, market.ticker)) return;
           if (seen.has(market.ticker)) return;
           seen.add(market.ticker);
           const quotes = [['YES', market.yes_ask_dollars], ['NO', market.no_ask_dollars]] as const;
@@ -187,21 +199,28 @@ export default {
               volume24h: market.volume_24h_fp ?? null });
           }
         };
+        const allSources: { market: Quote & { event_ticker?: string }; event: string }[] = [];
         for (const market of results.flat()) {
-          if (!market.event_ticker || !eventTitles.has(market.event_ticker)) continue;
-          addMarket(market, eventTitles.get(market.event_ticker) || market.event_ticker);
+          if (!market.event_ticker) continue;
+          allSources.push({ market, event: eventTitles.get(market.event_ticker) || market.event_ticker });
         }
         for (const event of sports) {
           if (!event.event_ticker) continue;
           for (const market of event.markets || []) {
-            addMarket(market, event.title || event.event_ticker);
+            allSources.push({ market, event: event.title || event.event_ticker });
           }
+        }
+        for (const source of allSources) addMarket(source.market, source.event, 'strict');
+        if (markets.length === 0) {
+          seen.clear();
+          for (const source of allSources) addMarket(source.market, source.event, 'fallback');
         }
         scanSignal.throwIfAborted();
         markets.sort((a, b) => a.askCents - b.askCents || a.event.localeCompare(b.event));
+        const modeNote = markets.length ? 'Results prioritize moneyline contracts and may fall back to team-outcome contracts when no moneyline matches are found for the selected league.' : 'No contracts matched the selected league and range in this snapshot.';
         return { source: 'Kalshi public API', provider, scannedAt: new Date().toISOString(),
           sportsEvents, pagesScanned, nestedMarkets, quotedMarkets, fetchedMarkets: results.reduce((n, group) => n + group.length, 0), marketPagesScanned, rateLimited, markets, partialCoverage: Boolean(cursor || marketCursor || rateLimited),
-          note: 'Sports-only, on-demand scan. Results include match moneyline contracts only, displayed by contract side (YES/NO) at the current ask. Up to five event pages and ten market pages are checked. Coverage is partial when additional pages exist or rate limiting occurs.' };
+          note: 'Sports-only, on-demand scan. ' + modeNote + ' Quotes are displayed by contract side (YES/NO) at the current ask. Up to five event pages and ten market pages are checked. Coverage is partial when additional pages exist or rate limiting occurs.' };
         };
         const result = env.DB
           ? await sharedScan(env.DB, min, max, fetchSnapshot)
