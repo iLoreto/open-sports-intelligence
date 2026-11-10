@@ -22,3 +22,17 @@ If DB is not bound, the existing scan remains available but the response explici
 
 ## Tests
 `cd apps/web && npm run test:cache` runs Node's native TypeScript-stripping tests for cache hits, overlapping ranges, TTL expiry, simultaneous requests, lease contention, and failure recovery.
+
+## Queued next provider: Novig (not yet connected)
+
+**P1 follow-up, intentionally not activated in this PR.** The current `/api/markets/scan?provider=novig` response remains `501` until a permitted, reliable market-data integration is available. Do not represent placeholder quotes as live Novig prices.
+
+- [ ] Confirm supported Novig quote source, credentials/permissions, redistribution rights and rate limits.
+- [ ] Implement a separate Novig adapter returning normalized event IDs, market IDs, side, executable bid/ask, liquidity, captured-at timestamp and settlement rules. Do not assume Novig markets are interchangeable with Kalshi markets.
+- [ ] Use independent D1 cache key `novig:sports:open:v1` (plus additional scan-scope dimensions if required). **Never** return a Kalshi snapshot for a Novig request.
+- [ ] Apply the same 60-second snapshot TTL and atomic lease deduplication, independently per provider.
+- [ ] Add provider-specific cache-hit, overlapping-range, concurrent-request, expiry, API failure, stale quote and incomplete coverage tests.
+- [ ] Add UI provider switch and display quote source, capture time, cache age and explicit unavailable state.
+- [ ] Run preview smoke tests against authorized Novig data before enabling production requests.
+
+A cross-provider comparison must explicitly reconcile event identity, outcome and settlement terms; matching titles alone are insufficient.
