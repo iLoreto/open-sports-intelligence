@@ -11,7 +11,7 @@ test('NBA compare returns computed stats from completed team schedule events', a
   globalThis.fetch = async (input) => {
 	const url = String(input);
 	calls.push(url);
-	assert.match(url, /site\.api\.espn\.com\/apis\/site\/v2\/sports\/basketball\/nba\/teams\/(2|5)\/schedule\?season=/);
+	assert.match(url, /site\.api\.espn\.com\/apis\/site\/v2\/sports\/basketball\/nba\/teams\/(bos|cle)\/schedule\?season=/);
 	return Response.json({
 	  events: [
 		{
