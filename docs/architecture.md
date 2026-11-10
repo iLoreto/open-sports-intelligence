@@ -1,46 +1,45 @@
-# Architecture
+# Architecture — current manual-scan implementation
 
-## First deployment
+## Request flow
 
-```
-GitHub main
-   └── Cloudflare Workers Git integration
-        └── Single Worker deployment
-             ├── Angular static assets
-             └── Worker /api/markets
-              ├── Kalshi GET /series?category=Sports
-              └── Kalshi GET /markets?series_ticker=…
-```
+```text
+GitHub main --push/merge--> Cloudflare Workers Git deployment
+                              |
+                              +-- Angular static application
+                              +-- Worker /api/* endpoints
 
-The Worker API adapter caches a sampled read-only snapshot at the Cloudflare edge for 30 minutes. One manual UI refresh calls `?fresh=1`. The browser also refreshes every 30 minutes while open.
-
-The data source itself provides a previous-price field, but it does not give us a timestamped 30-minute delta. We label that honestly.
-
-## Phase-one historical collector
-
-```
-Cloudflare Cron Trigger (UTC, every 30 minutes)
-  └── scheduled() → Kalshi sampled scan → D1 RADAR_DB
-                                             ├── radar_scans: latest full API payload
-                                             └── market_history: timestamped price points
-
-Public GET /api/markets → recent D1 scan (if fresh) → live API fallback → edge cache
-Public GET /api/history?ticker=… → D1 24-hour samples (or explicit unavailable)
+User selects provider + ask range
+  -> clicks Scan
+  -> POST /api/markets/scan
+  -> bounded Kalshi public event/market requests
+  -> optional short-lived shared scan cache
+  -> result, source freshness, and partial-coverage warnings
 ```
 
-The database binding is intentionally optional so production can deploy safely before D1 provisioning. The scheduled collector logs a warning and returns when `RADAR_DB` is not bound. `?fresh=1` bypasses the edge cache and persisted snapshot for a live check without writing artificial history.
+**There is no background market scanner.** Cloudflare Git deployments can occur automatically, but market data is retrieved only on explicit scan requests. The browser must not be described as polling every 30 minutes.
 
-The frontend has a 55–65¢ YES ask watch band, separated game and championship desks, and on-demand history charts. Missing timestamp intervals are rendered as gaps. All displays are factual market observations, not forecasts or betting advice.
+## API and data sources
 
-## Next iteration
+- `POST /api/markets/scan`: explicit manual scan. Kalshi supported; Novig not configured. Bounded upstream pagination means coverage may be incomplete.
+- `GET /api/health`: includes `backgroundScanning: false`.
+- NBA team comparison: public ESPN team schedules, with completed-game normalization and coverage limitations.
+- Tennis: provider not configured; return a clear unavailable status.
 
-Add full series/market pagination, per-series coverage metrics, ingestion retries/backoff, and additional independent sporting data. The phase-one scheduled sampling is still partial coverage; it must not be mistaken for a global complete radar.
+The current `apps/web/wrangler.jsonc` declares static assets and the Worker entrypoint; it does not declare scheduled cron triggers or a D1 history database binding.
 
-Independent sports data and prediction services are separate model components. A model must publish a tracked version, source timestamps, calibration data, and historical accuracy before any market/model gap appears as a radar signal.
+## Removed legacy design
 
-## Security and privacy
+Earlier phases proposed a 30-minute browser refresh, scheduled Cloudflare sampling, D1 `radar_scans`/`market_history` tables, and 24-hour history charts. **Those descriptions are historical design notes, not current features.** The application no longer promises automatic refresh or 30-minute historical tracking. Legacy migration files may remain in Git history or the repository for reference; their presence does not mean collection is running.
 
-- Public data only; there are no account endpoints or credentials in the application.
-- No order placement, portfolio calls, authentication tokens, or automated trading.
-- No secrets committed to GitHub. Future ingestion API credentials, if any, belong in Cloudflare secrets.
-- External data should be treated as untrusted and normalized before rendering.
+A provider's previous-price value is not a timestamped 30-minute delta. A shared response cache is an efficiency mechanism, not a periodic recorder.
+
+## Multi-developer change control
+
+Create new branches from the current remote `main`; avoid stale PR branches and direct pushes to production. Review current source and documentation before changing contracts. Keep PRs focused, run build/typecheck and relevant tests, check GitHub Actions, and refresh the PR branch when other developers merge changes. A successful build is not proof that a live external API is returning valid data; production smoke checks must exercise actual deployed endpoints.
+
+## Security and correctness
+
+- Read-only public research, no order placement or account integration.
+- No secrets in source control.
+- Normalize and validate upstream data; surface unavailable providers and partial results.
+- No fabricated market history, forecasts, or unsupported completeness claims.
