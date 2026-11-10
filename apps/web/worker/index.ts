@@ -88,6 +88,22 @@ export default {
       const max = Number(url.searchParams.get('max') ?? '70');
       if (!Number.isInteger(min) || !Number.isInteger(max) || min < 1 || max > 99 || min > max)
         return json({ error: 'Specify a valid price range from 1 to 99 cents, minimum not exceeding maximum.' }, 400);
+      const scanLeagues = ['all', 'nba', 'nfl', 'nhl', 'mlb', 'wnba', 'ncaaf', 'ncaam'] as const;
+      type ScanLeague = (typeof scanLeagues)[number];
+      const selectedLeague = ((url.searchParams.get('league') || 'all').toLowerCase()) as ScanLeague;
+      if (!scanLeagues.includes(selectedLeague)) return json({ error: 'Unsupported league filter' }, 400);
+      const inferLeague = (event: string, title: string, ticker: string): Exclude<ScanLeague, 'all'> | null => {
+        const text = (event + ' ' + title + ' ' + ticker).toLowerCase();
+        if (/\bwnba\b/.test(text)) return 'wnba';
+        if (/\bncaaf\b|college football/.test(text)) return 'ncaaf';
+        if (/\bncaam\b|mens college basketball|men\'s college basketball|ncaa basketball|college basketball/.test(text)) return 'ncaam';
+        if (/\bnfl\b|super bowl|pro football/.test(text)) return 'nfl';
+        if (/\bnhl\b|stanley cup|hockey/.test(text)) return 'nhl';
+        if (/\bmlb\b|world series|baseball/.test(text)) return 'mlb';
+        if (/\bnba\b|basketball/.test(text)) return 'nba';
+        return null;
+      };
+      const leagueLabel = (league: ScanLeague): string => league === 'all' ? 'All sports' : league.toUpperCase();
       try {
         const fetchSnapshot = async (scanSignal: AbortSignal): Promise<ScanSnapshot> => {
         // On-demand only. A single D1 snapshot is shared across users and price ranges.
@@ -143,16 +159,15 @@ export default {
         }
         const seen = new Set<string>();
         const isMoneylineMarket = (event: string, title: string, ticker: string): boolean => {
-          const eventText = event.toLowerCase();
           const text = (event + ' ' + title).toLowerCase();
           if (text.includes(',')) return false;
           if (/\b(over|under|spread|total|handicap|alternate line|alt line)\b/.test(text)) return false;
-          if (/[+-]\d+(?:\.\d+)?/.test(text)) return false;
-          const matchContext = /\b(at|vs|v)\b/.test(eventText) || /\b(match|game)\b/.test(eventText);
-          if (!matchContext) return false;
-          const winnerSignal = /\bwin(?:s|ner)?\b|\bto win\b|\bmoneyline\b/.test(text);
+          if (/\b(points?|yards?|rebounds?|assists?|shots?|goals?)\b/.test(text) && /\b(over|under|more|less|at least|to record)\b/.test(text)) return false;
+          if (/(?:^|\s)[+-]\d+(?:\.\d+)?(?:\s|$)/.test(text)) return false;
+          const matchContext = /\b(at|vs|versus|v)\b/.test(text) || /@/.test(text) || /\b(match|game)\b/.test(text);
+          const winnerSignal = /\bwin(?:s|ner)?\b|\bto win\b|\bmoneyline\b|\byes\b/.test(text);
           const tickerSignal = /(?:^|[-_])ml(?:$|[-_])/i.test(ticker);
-          return winnerSignal || tickerSignal;
+          return (matchContext && winnerSignal) || tickerSignal;
         };
         const addMarket = (market: Quote & { event_ticker?: string }, event: string) => {
           if (!market.ticker || (market.status && !['open', 'active'].includes(market.status))) return;
@@ -193,7 +208,8 @@ export default {
         const result = env.DB
           ? await sharedScan(env.DB, min, max, fetchSnapshot)
           : uncachedScan(await fetchSnapshot(request.signal), min, max);
-        return json(result);
+        const leagueFiltered = selectedLeague === 'all' ? result.markets : result.markets.filter((market) => inferLeague(market.event, market.title, market.ticker) === selectedLeague);
+        return json({ ...result, markets: leagueFiltered, note: result.note + ' League filter: ' + leagueLabel(selectedLeague) + '.' });
       } catch (e) { return json({ error: e instanceof Error ? e.message : 'Kalshi feed unavailable' }, 502); }
     }
     const leagueCompare = new RegExp('^/api/leagues/(nfl|nhl|mlb|wnba|ncaaf|ncaam)/compare$').exec(url.pathname);
