@@ -62,19 +62,19 @@ test('NBA compare returns computed stats from completed team schedule events', a
   }
 });
 
-test('market scan keeps sports markets even when markets feed has no matching event_ticker set', async () => {
+test('market scan returns non-empty moneyline results and honors league filter', async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (input) => {
 	const url = new URL(String(input));
 	if (url.pathname.endsWith('/events')) {
 	  return Response.json({
 		events: [{
-		  event_ticker: 'SPORT-1',
-		  title: 'Alpha at Beta',
+		  event_ticker: 'NBA-1',
+		  title: 'NBA: Alpha at Beta',
 		  category: 'Sports',
 		  markets: [{
-			ticker: 'SPORT-1-WIN',
-			title: 'Alpha wins',
+			ticker: 'NBA-1-ML',
+			title: 'Alpha to win',
 			status: 'open',
 			yes_ask_dollars: '0.58',
 			no_ask_dollars: '0.42',
@@ -82,7 +82,7 @@ test('market scan keeps sports markets even when markets feed has no matching ev
 			last_price_dollars: '0.57',
 			volume_24h_fp: '91.3'
 		  }, {
-			ticker: 'SPORT-1-TOTAL',
+			ticker: 'NBA-1-TOTAL',
 			title: 'Over total',
 			status: 'active',
 			yes_ask_dollars: '0.83',
@@ -90,6 +90,20 @@ test('market scan keeps sports markets even when markets feed has no matching ev
 			yes_bid_dollars: '0.80',
 			last_price_dollars: '0.82',
 			volume_24h_fp: '55.0'
+		  }]
+		}, {
+		  event_ticker: 'NFL-1',
+		  title: 'NFL: Gamma vs Delta',
+		  category: 'Sports',
+		  markets: [{
+			ticker: 'NFL-1-ML',
+			title: 'Gamma to win',
+			status: 'open',
+			yes_ask_dollars: '0.47',
+			no_ask_dollars: '0.53',
+			yes_bid_dollars: '0.45',
+			last_price_dollars: '0.48',
+			volume_24h_fp: '77.0'
 		  }]
 		}],
 		cursor: ''
@@ -111,14 +125,20 @@ test('market scan keeps sports markets even when markets feed has no matching ev
   };
 
   try {
-	const response = await worker.fetch(request('/api/markets/scan?provider=kalshi&min=50&max=72', 'POST'), { ASSETS: assets });
-	assert.equal(response.status, 200);
-	const body = await response.json() as any;
-	assert.ok(Array.isArray(body.markets));
-	assert.equal(body.markets.length, 1);
-	assert.deepEqual(body.markets.map((market: any) => [market.ticker, market.side, market.askCents]), [
-	  ['SPORT-1-WIN', 'YES', 58]
+	const nbaResponse = await worker.fetch(request('/api/markets/scan?provider=kalshi&league=nba&min=1&max=99', 'POST'), { ASSETS: assets });
+	assert.equal(nbaResponse.status, 200);
+	const nbaBody = await nbaResponse.json() as any;
+	assert.ok(Array.isArray(nbaBody.markets));
+	assert.equal(nbaBody.markets.length, 2);
+	assert.deepEqual(nbaBody.markets.map((market: any) => [market.ticker, market.side, market.askCents]), [
+	  ['NBA-1-ML', 'NO', 42],
+	  ['NBA-1-ML', 'YES', 58]
 	]);
+
+	const allResponse = await worker.fetch(request('/api/markets/scan?provider=kalshi&league=all&min=1&max=99', 'POST'), { ASSETS: assets });
+	assert.equal(allResponse.status, 200);
+	const allBody = await allResponse.json() as any;
+	assert.ok(allBody.markets.length >= 4);
   } finally {
 	globalThis.fetch = originalFetch;
   }
