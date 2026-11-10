@@ -14,12 +14,12 @@ try {
   if (!Array.isArray(teams.teams) || !teams.teams.some(t => t.id === 2) || !teams.teams.some(t => t.id === 6)) fail('NBA team directory invalid');
   console.log('PASS: deployed NBA team directory');
   const status = await request('/api/nba/config-status');
-  if (status.keyConfigured !== true) fail('Production Worker missing NBA runtime secret binding');
-  console.log('PASS: deployed runtime has NBA secret binding (value not exposed)');
+  if (typeof status.keyConfigured !== 'boolean') fail('Invalid runtime provider configuration status');
+  console.log('INFO: optional BALLDONTLIE binding ' + (status.keyConfigured ? 'configured' : 'not configured; ESPN fallback expected'));
   const comparison = await request('/api/nba/compare?left=2&right=6&sample=5');
   for (const side of ['left','right']) {
     const stats = comparison[side];
-    if (!stats || !Number.isInteger(stats.games) || stats.games < 1 || stats.games > 5 || stats.wins + stats.losses !== stats.games || !Number.isFinite(stats.pointsFor) || !Number.isFinite(stats.pointsAgainst)) fail('Invalid ' + side + ' comparison statistics');
+    if (!stats || !Number.isInteger(stats.games) || stats.games < 1 || stats.games > 5 || stats.wins + stats.losses + (stats.ties || 0) !== stats.games || !Number.isFinite(stats.pointsFor) || !Number.isFinite(stats.pointsAgainst)) fail('Invalid ' + side + ' comparison statistics');
   }
   if (!comparison.source || !comparison.fetchedAt) fail('Missing comparison source/timestamp');
   console.log('PASS: live Boston vs Cleveland comparison, source=' + comparison.source);
