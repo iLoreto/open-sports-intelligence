@@ -18,5 +18,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - name: Exercise real deployed Worker and BALLDONTLIE-backed comparison
+      - name: Exercise deployed ESPN-backed NBA comparison
         run: node apps/web/scripts/smoke-production.mjs
