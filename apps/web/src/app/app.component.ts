@@ -70,6 +70,7 @@ interface Comparison { source: string; fetchedAt: string; sample: number; left: 
     .panel{background:#111d2d;border:1px solid #29394e;border-radius:16px;padding:24px;margin-bottom:18px}label{display:block;margin:16px 0 7px;font-size:13px;color:#c3d0df}select{display:block;width:100%;box-sizing:border-box;margin-top:8px}
     .columns{display:grid;grid-template-columns:1fr 1fr;gap:18px}.run{width:100%;background:#69d8d0;color:#08242c;border:0;font-weight:800;margin-top:22px}.hint,.meta{font-size:13px}.error{color:#ffaaa6}.stats{padding:15px;background:#172538;border-radius:10px}
     .range-header{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-top:22px}
+    .range-header strong:last-child{font-size:clamp(1.55rem,3.2vw,2.2rem);line-height:1.05;font-weight:900;letter-spacing:.01em;color:#a2eee7;text-shadow:0 0 16px rgba(105,216,208,.25)}
     .range-control{padding:14px 18px;background:#172538;border:1px solid #354359;border-radius:12px;margin-top:12px}
     .range-values,.range-scale{display:flex;justify-content:space-between;gap:12px}
     .range-values label{margin:0 0 12px;font-size:13px}
