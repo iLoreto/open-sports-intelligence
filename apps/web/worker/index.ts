@@ -22,6 +22,12 @@ function summarize(games: Game[], id: number, sample: number) {
 export default {
   async fetch(request: Request, env: Environment): Promise<Response> {
     const url = new URL(request.url);
+    if (url.pathname === '/api/nba/config-status') return json({
+      service: 'nba',
+      keyConfigured: typeof env.BALLDONTLIE_API_KEY === 'string' && env.BALLDONTLIE_API_KEY.trim().length > 0,
+      keyBindingType: typeof env.BALLDONTLIE_API_KEY,
+      note: 'Runtime binding check only; no secret value or upstream request is exposed.'
+    });
     if (url.pathname === '/api/health') return json({ status: 'ok', activeSports: ['nba', 'tennis'], backgroundScanning: false });
     if (url.pathname === '/api/tennis/status') return json({ message: 'Tennis data provider not configured. Challenger and ITF coverage must be verified.', configured: false }, 503);
 
@@ -119,7 +125,7 @@ export default {
     if (url.pathname.startsWith('/api/nba/')) {
       if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
       if (url.pathname === '/api/nba/teams') return json({ source: 'NBA team directory', teams: NBA_TEAMS });
-      if (!env.BALLDONTLIE_API_KEY) return json({ message: 'NBA comparisons require BALLDONTLIE_API_KEY; team selection is available.' }, 503);
+      if (typeof env.BALLDONTLIE_API_KEY !== 'string' || !env.BALLDONTLIE_API_KEY.trim()) return json({ message: 'NBA runtime secret binding missing. Check Worker Settings → Variables and Secrets (not Build variables).', code: 'NBA_RUNTIME_SECRET_MISSING' }, 503);
       try {
         if (url.pathname === '/api/nba/games') {
           const date = url.searchParams.get('date') || new Date().toISOString().slice(0, 10);
