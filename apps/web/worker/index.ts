@@ -64,38 +64,29 @@ export default {
           if (!next || next === cursor) { cursor = ''; break; }
           cursor = next;
         }
-        // Request actual market quotes from the markets endpoint rather than relying on
-        // potentially incomplete event-nested quote snapshots. Batch event tickers (max 10).
+        // Page through the global markets feed rather than issuing one request per
+        // event. This bounds upstream traffic and avoids rate-limit bursts.
         const eventTitles = new Map(sports.map(e => [e.event_ticker!, e.title || e.event_ticker!]));
-        // Kalshi accepts a SINGLE event_ticker here; comma-separated values are only
-        // supported by the separate tickers (market ticker) filter.
-        // Bound concurrency so a scan does not flood the upstream API.
         const results: (Quote & { event_ticker?: string })[][] = [];
-        const eventTickers = [...eventTitles.keys()];
-        let nextEventIndex = 0;
-        const worker = async () => {
-          while (!scanSignal.aborted && nextEventIndex < eventTickers.length) {
-            const eventTicker = eventTickers[nextEventIndex++];
-            const collected: (Quote & { event_ticker?: string })[] = [];
-            let marketCursor = '';
-            for (let pageNumber = 0; pageNumber < 3; pageNumber++) {
-              const query = new URLSearchParams({ status: 'open', limit: '1000', event_ticker: eventTicker });
-              if (marketCursor) query.set('cursor', marketCursor);
-              const response = await fetch(endpoint + '/markets?' + query.toString(), {
-                headers: { Accept: 'application/json' }, signal: AbortSignal.any([scanSignal, AbortSignal.timeout(13000)])
-              });
-              if (!response.ok) throw new Error('Kalshi markets HTTP ' + response.status + ' for ' + eventTicker);
-              const page = await response.json() as { markets?: (Quote & { event_ticker?: string })[]; cursor?: string };
-              if (!Array.isArray(page.markets)) throw new Error('Unexpected Kalshi markets response for ' + eventTicker);
-              collected.push(...page.markets);
-              const next = page.cursor || '';
-              if (!next || next === marketCursor) break;
-              marketCursor = next;
-            }
-            results.push(collected);
-          }
-        };
-        await Promise.all(Array.from({ length: Math.min(6, eventTickers.length) }, () => worker()));
+        let marketCursor = '';
+        let marketPagesScanned = 0;
+        let rateLimited = false;
+        for (let pageNumber = 0; pageNumber < 10; pageNumber++) {
+          const query = new URLSearchParams({ status: 'open', limit: '1000' });
+          if (marketCursor) query.set('cursor', marketCursor);
+          const response = await fetch(endpoint + '/markets?' + query.toString(), {
+            headers: { Accept: 'application/json' }, signal: AbortSignal.any([scanSignal, AbortSignal.timeout(13000)])
+          });
+          if (response.status === 429) { rateLimited = true; break; }
+          if (!response.ok) throw new Error('Kalshi markets HTTP ' + response.status);
+          const page = await response.json() as { markets?: (Quote & { event_ticker?: string })[]; cursor?: string };
+          if (!Array.isArray(page.markets)) throw new Error('Unexpected Kalshi markets response');
+          marketPagesScanned++;
+          results.push(page.markets);
+          const next = page.cursor || '';
+          if (!next || next === marketCursor) { marketCursor = ''; break; }
+          marketCursor = next;
+        }
         const seen = new Set<string>();
         for (const market of results.flat()) {
           if (!market.ticker || !market.event_ticker || !eventTitles.has(market.event_ticker) || (market.status && !['open', 'active'].includes(market.status))) continue;
@@ -116,8 +107,8 @@ export default {
         scanSignal.throwIfAborted();
         markets.sort((a, b) => a.askCents - b.askCents || a.event.localeCompare(b.event));
         return { source: 'Kalshi public API', provider, scannedAt: new Date().toISOString(),
-          sportsEvents, pagesScanned, nestedMarkets, quotedMarkets, fetchedMarkets: results.reduce((n, group) => n + group.length, 0), markets, partialCoverage: Boolean(cursor),
-          note: 'Sports-only, on-demand scan. Quotes are displayed by contract side (YES/NO) at the current ask. Up to five event pages are checked; prices are retrieved from the markets endpoint. Additional pages may exist.' };
+          sportsEvents, pagesScanned, nestedMarkets, quotedMarkets, fetchedMarkets: results.reduce((n, group) => n + group.length, 0), marketPagesScanned, rateLimited, markets, partialCoverage: Boolean(cursor || marketCursor || rateLimited),
+          note: 'Sports-only, on-demand scan. Quotes are displayed by contract side (YES/NO) at the current ask. Up to five event pages and ten market pages are checked. Coverage is partial when additional pages exist or rate limiting occurs.' };
         };
         const result = env.DB
           ? await sharedScan(env.DB, min, max, fetchSnapshot)

@@ -19,6 +19,7 @@ export interface ScanSnapshot {
   source: string; provider: string; scannedAt: string;
   sportsEvents: number; pagesScanned: number; nestedMarkets: number;
   quotedMarkets: number; fetchedMarkets: number; partialCoverage: boolean;
+  marketPagesScanned?: number; rateLimited?: boolean;
   note: string; markets: CachedMarket[];
 }
 interface Row { snapshot: string | null; captured_at: number | null; expires_at: number | null; lease_until: number | null }
