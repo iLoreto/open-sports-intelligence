@@ -1,17 +1,10 @@
 import { sharedScan, uncachedScan, type ScanSnapshot, type ScanDatabase } from './scan-cache.ts';
-interface Environment { ASSETS: { fetch(request: Request): Promise<Response> }; BALLDONTLIE_API_KEY?: string; DB?: ScanDatabase }
+interface Environment { ASSETS: { fetch(request: Request): Promise<Response> }; DB?: ScanDatabase }
 type Team = { id: number; full_name: string };
 type Game = { id: number; date: string; status: string; home_team: Team; visitor_team: Team; home_team_score: number; visitor_team_score: number };
 const NBA_TEAMS: Team[] = [{"id":1,"full_name":"Atlanta Hawks"},{"id":2,"full_name":"Boston Celtics"},{"id":3,"full_name":"Brooklyn Nets"},{"id":4,"full_name":"Charlotte Hornets"},{"id":5,"full_name":"Chicago Bulls"},{"id":6,"full_name":"Cleveland Cavaliers"},{"id":7,"full_name":"Dallas Mavericks"},{"id":8,"full_name":"Denver Nuggets"},{"id":9,"full_name":"Detroit Pistons"},{"id":10,"full_name":"Golden State Warriors"},{"id":11,"full_name":"Houston Rockets"},{"id":12,"full_name":"Indiana Pacers"},{"id":13,"full_name":"LA Clippers"},{"id":14,"full_name":"Los Angeles Lakers"},{"id":15,"full_name":"Memphis Grizzlies"},{"id":16,"full_name":"Miami Heat"},{"id":17,"full_name":"Milwaukee Bucks"},{"id":18,"full_name":"Minnesota Timberwolves"},{"id":19,"full_name":"New Orleans Pelicans"},{"id":20,"full_name":"New York Knicks"},{"id":21,"full_name":"Oklahoma City Thunder"},{"id":22,"full_name":"Orlando Magic"},{"id":23,"full_name":"Philadelphia 76ers"},{"id":24,"full_name":"Phoenix Suns"},{"id":25,"full_name":"Portland Trail Blazers"},{"id":26,"full_name":"Sacramento Kings"},{"id":27,"full_name":"San Antonio Spurs"},{"id":28,"full_name":"Toronto Raptors"},{"id":29,"full_name":"Utah Jazz"},{"id":30,"full_name":"Washington Wizards"}];
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
 function validDate(value: string): boolean { return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value)); }
-async function bdl(path: string, key: string): Promise<{ data: unknown[]; meta?: { next_cursor?: number | null } }> {
-  const response = await fetch('https://api.balldontlie.io/v1/' + path, { headers: { Authorization: key }, signal: AbortSignal.timeout(10000) });
-  if (!response.ok) throw new Error('BALLDONTLIE returned HTTP ' + response.status);
-  const body = await response.json() as { data?: unknown[]; meta?: { next_cursor?: number | null } };
-  if (!Array.isArray(body.data)) throw new Error('Unexpected BALLDONTLIE response');
-  return { data: body.data, meta: body.meta };
-}
 const NBA_ABBREVIATIONS = ['ATL','BOS','BKN','CHA','CHI','CLE','DAL','DEN','DET','GS','HOU','IND','LAC','LAL','MEM','MIA','MIL','MIN','NO','NY','OKC','ORL','PHI','PHX','POR','SAC','SA','TOR','UTAH','WSH'];
 async function espnComparison(left: number, right: number, sample: number) {
   const now = new Date();
@@ -35,7 +28,7 @@ async function espnComparison(left: number, right: number, sample: number) {
   }));
   const ids = new Map<string, number>();
   NBA_ABBREVIATIONS.forEach((abbr, i) => ids.set(abbr, i + 1));
-  // ESPN uses a few different abbreviations than BALLDONTLIE.
+  // Normalize ESPN abbreviations to the app's stable NBA team IDs.
   ids.set('GSW', 10); ids.set('NOP', 19); ids.set('NYK', 20); ids.set('OKC', 21);
   ids.set('SAS', 27); ids.set('UTA', 29); ids.set('WAS', 30);
   const games = new Map<string, Game>();
@@ -53,7 +46,7 @@ async function espnComparison(left: number, right: number, sample: number) {
   const all = [...games.values()];
   const a = summarize(all, left, sample), b = summarize(all, right, sample);
   if (!a.games || !b.games) throw new Error('ESPN returned no completed games for one or both selected teams.');
-  return { source: 'ESPN NBA scoreboard (public fallback)', fetchedAt: new Date().toISOString(), sample, left: a, right: b, partial: a.games < sample || b.games < sample, note: 'Completed NBA games from the last 180 days. ESPN public scoreboard fallback; available sample sizes may be smaller than requested. No injury or player statistics included.' };
+  return { source: 'ESPN NBA scoreboard', fetchedAt: new Date().toISOString(), sample, left: a, right: b, partial: a.games < sample || b.games < sample, note: 'Completed NBA games from the last 180 days. ESPN public scoreboard; available sample sizes may be smaller than requested. No injury or player statistics included.' };
 }
 function summarize(games: Game[], id: number, sample: number) {
   const played = games.filter(g => (g.home_team.id === id || g.visitor_team.id === id) && (g.status === 'Final' || g.status.startsWith('Final')) && Number.isFinite(g.home_team_score) && Number.isFinite(g.visitor_team_score))
@@ -65,12 +58,6 @@ function summarize(games: Game[], id: number, sample: number) {
 export default {
   async fetch(request: Request, env: Environment): Promise<Response> {
     const url = new URL(request.url);
-    if (url.pathname === '/api/nba/config-status') return json({
-      service: 'nba',
-      keyConfigured: typeof env.BALLDONTLIE_API_KEY === 'string' && env.BALLDONTLIE_API_KEY.trim().length > 0,
-      keyBindingType: typeof env.BALLDONTLIE_API_KEY,
-      note: 'Runtime binding check only; no secret value or upstream request is exposed.'
-    });
     if (url.pathname === '/api/health') return json({ status: 'ok', activeSports: ['nba', 'tennis'], backgroundScanning: false });
     if (url.pathname === '/api/tennis/status') return json({ message: 'Tennis data provider not configured. Challenger and ITF coverage must be verified.', configured: false }, 503);
 
@@ -246,29 +233,15 @@ export default {
     if (url.pathname.startsWith('/api/nba/')) {
       if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
       if (url.pathname === '/api/nba/teams') return json({ source: 'NBA team directory', teams: NBA_TEAMS });
-      const bdlKey = typeof env.BALLDONTLIE_API_KEY === 'string' && env.BALLDONTLIE_API_KEY.trim() ? env.BALLDONTLIE_API_KEY : null;
-       const hasBdlKey = bdlKey !== null;
       try {
-        if (url.pathname === '/api/nba/games') {
-          const date = url.searchParams.get('date') || new Date().toISOString().slice(0, 10);
-          if (!validDate(date)) return json({ error: 'Invalid date' }, 400);
-          if (!bdlKey) return json({ message: 'Dated games endpoint requires BALLDONTLIE; use team comparison for ESPN fallback.' }, 503);
-          const data = await bdl('games?dates[]=' + encodeURIComponent(date) + '&per_page=100', bdlKey);
-          return json({ source: 'BALLDONTLIE NBA API', fetchedAt: new Date().toISOString(), games: data.data });
-        }
         if (url.pathname === '/api/nba/compare') {
           const left = Number(url.searchParams.get('left')), right = Number(url.searchParams.get('right'));
           const sample = Number(url.searchParams.get('sample') || 10);
           if (!Number.isInteger(left) || !Number.isInteger(right) || left <= 0 || right <= 0 || left === right || ![5,10,20].includes(sample)) return json({ error: 'Select two different teams and a valid sample.' }, 400);
-          if (!bdlKey) return json(await espnComparison(left, right, sample));
-          const end = new Date(), start = new Date(end.getTime() - 180 * 86400000);
-          const query = (id: number) => 'games?team_ids[]=' + id + '&start_date=' + start.toISOString().slice(0,10) + '&end_date=' + end.toISOString().slice(0,10) + '&per_page=100';
-          const [a,b] = await Promise.all([bdl(query(left), bdlKey), bdl(query(right), bdlKey)]);
-          const leftGames = a.data as Game[], rightGames = b.data as Game[];
-          const leftStats = summarize(leftGames, left, sample), rightStats = summarize(rightGames, right, sample);
-          return json({ source: 'BALLDONTLIE NBA API', fetchedAt: new Date().toISOString(), sample, left: leftStats, right: rightStats, partial: Boolean(a.meta?.next_cursor || b.meta?.next_cursor), note: 'Completed games in the last 180 days. Results limited to the first 100 provider records per team; coverage may be incomplete. No injury or player statistics included.' });
+          return json(await espnComparison(left, right, sample));
         }
-      } catch (e) { return json({ message: e instanceof Error ? e.message : 'NBA provider unavailable' }, 502); }
+        if (url.pathname === '/api/nba/games') return json({ error: 'Dated game listings are not yet implemented with ESPN.' }, 501);
+      } catch (e) { return json({ message: e instanceof Error ? e.message : 'ESPN NBA provider unavailable' }, 502); }
     }
     if (url.pathname.startsWith('/api/')) return json({ error: 'Not found' }, 404);
     return env.ASSETS.fetch(request);
