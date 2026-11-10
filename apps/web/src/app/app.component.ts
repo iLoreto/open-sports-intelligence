@@ -119,7 +119,7 @@ export class AppComponent {
   readonly loading = signal(false); readonly comparison = signal<Comparison | null>(null); readonly error = signal('');
   private requestId = 0;
   constructor() { void this.loadTeams(); }
-  teamName(id: number | string): string { return this.teams().find(t => t.id === id)?.full_name ?? 'Team'; }
+  teamName(id: number | string): string { return this.teams().find(t => String(t.id) === String(id))?.full_name ?? 'Team'; }
   chooseSport(value: Sport): void {
     this.requestId++; this.sport.set(value); this.teams.set([]); this.left.set(0); this.right.set(0); this.loading.set(false); this.comparison.set(null); this.error.set(''); if (value !== 'tennis') void this.loadTeams();
   }
@@ -134,7 +134,7 @@ export class AppComponent {
     finally { if (requestId === this.requestId) this.teamLoading.set(false); }
   }
   async run(): Promise<void> {
-    if (this.sport() === 'tennis' || !this.left() || !this.right() || this.left() === this.right()) return;
+    if (this.sport() === 'tennis' || !this.left() || !this.right() || String(this.left()) === String(this.right())) return;
     const id = ++this.requestId, a = this.left(), b = this.right(), n = this.sample();
     this.loading.set(true); this.error.set(''); this.comparison.set(null);
     try {
