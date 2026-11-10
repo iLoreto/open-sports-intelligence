@@ -8,7 +8,8 @@
     "builds": "npm run build",
     "typecheck:worker": "tsc --ignoreConfig --noEmit --allowImportingTsExtensions --target ES2022 --module ESNext --moduleResolution Bundler --lib ES2022,DOM --skipLibCheck worker/index.ts",
     "preview": "npm run build && wrangler dev",
-    "deploy": "npm run build && wrangler deploy"
+    "deploy": "npm run build && wrangler deploy",
+    "test:cache": "node --experimental-strip-types --test worker/scan-cache.test.ts"
   },
   "dependencies": {
     "@angular/common": "^22.0.0",
