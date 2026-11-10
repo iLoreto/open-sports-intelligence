@@ -121,7 +121,7 @@ export default {
         };
         const result = env.DB
           ? await sharedScan(env.DB, min, max, fetchSnapshot)
-          : uncachedScan(await fetchSnapshot(), min, max);
+          : uncachedScan(await fetchSnapshot(request.signal), min, max);
         return json(result);
       } catch (e) { return json({ error: e instanceof Error ? e.message : 'Kalshi feed unavailable' }, 502); }
     }
