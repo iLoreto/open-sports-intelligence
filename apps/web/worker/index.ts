@@ -165,6 +165,56 @@ export default {
         return json(result);
       } catch (e) { return json({ error: e instanceof Error ? e.message : 'Kalshi feed unavailable' }, 502); }
     }
+    const leagueCompare = /^\\/api\\/leagues\\/(nfl|nhl|mlb|wnba|ncaaf|ncaam)\\/compare$/.exec(url.pathname);
+    if (leagueCompare) {
+      if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
+      const league = leagueCompare[1];
+      const sportPaths: Record<string, string> = { nfl:'football/nfl', nhl:'hockey/nhl', mlb:'baseball/mlb', wnba:'basketball/wnba', ncaaf:'football/college-football', ncaam:'basketball/mens-college-basketball' };
+      const left = url.searchParams.get('left'), right = url.searchParams.get('right');
+      const sample = Number(url.searchParams.get('sample') || 5);
+      if (!left || !right || left === right || !/^[0-9]+$/.test(left) || !/^[0-9]+$/.test(right) || ![5,10,20].includes(sample)) return json({ error:'Select two different teams and a valid game range.' },400);
+      try {
+        const now = new Date(); const start = new Date(now.getTime() - (league === 'nfl' || league === 'ncaaf' ? 160 : 210) * 86400000);
+        const windows: string[] = [];
+        const cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
+        const fmt = (d: Date) => d.toISOString().slice(0,10).replace(/-/g,'');
+        while (cursor <= now) {
+          const y=cursor.getUTCFullYear(), m=cursor.getUTCMonth();
+          const first = new Date(Math.max(start.getTime(),Date.UTC(y,m,1)));
+          const last = new Date(Math.min(now.getTime(),Date.UTC(y,m+1,0)));
+          windows.push(fmt(first)+'-'+fmt(last)); cursor.setUTCMonth(cursor.getUTCMonth()+1);
+        }
+        type Competitor = { homeAway?:string; score?:string; team?:{id?:string} };
+        type Event = { id?:string; date?:string; status?:{type?:{completed?:boolean}}; competitions?:{competitors?:Competitor[]}[] };
+        const pages = await Promise.all(windows.map(async dates => {
+          const response = await fetch('https://site.api.espn.com/apis/site/v2/sports/'+sportPaths[league]+'/scoreboard?dates='+dates+'&limit=500', {signal:AbortSignal.timeout(12000)});
+          if (!response.ok) throw new Error('ESPN scoreboard HTTP '+response.status);
+          const data = await response.json() as {events?:Event[]};
+          if (!Array.isArray(data.events)) throw new Error('ESPN scoreboard schema changed');
+          return data.events;
+        }));
+        const all = new Map<string,{id:string;date:string;home:string;away:string;hs:number;as:number}>();
+        for (const event of pages.flat()) {
+          if (!event.id || !event.date || !event.status?.type?.completed) continue;
+          const competitors=event.competitions?.[0]?.competitors || [];
+          const home=competitors.find(c=>c.homeAway==='home'),away=competitors.find(c=>c.homeAway==='away');
+          if (!home?.team?.id || !away?.team?.id || !/^\\d+$/.test(String(home.score)) || !/^\\d+$/.test(String(away.score))) continue;
+          if (![left,right].includes(home.team.id) && ![left,right].includes(away.team.id)) continue;
+          all.set(event.id,{id:event.id,date:event.date,home:home.team.id,away:away.team.id,hs:Number(home.score),as:Number(away.score)});
+        }
+        const games=[...all.values()].sort((a,b)=>b.date.localeCompare(a.date));
+        const summarizeTeam=(id:string)=>{
+          const selected=games.filter(g=>g.home===id || g.away===id).slice(0,sample);
+          const recent=selected.map(g=>{const home=g.home===id;const scored=home?g.hs:g.as,allowed=home?g.as:g.hs;return {date:g.date.slice(0,10),scored,allowed,win:scored>allowed,tie:scored===allowed};});
+          const wins=recent.filter(g=>g.win).length, ties=recent.filter(g=>g.tie).length;
+          const average=(key:'scored'|'allowed')=>recent.length?Math.round(recent.reduce((sum,g)=>sum+g[key],0)/recent.length*10)/10:null;
+          return {games:recent.length,wins,losses:recent.length-wins-ties,ties,pointsFor:average('scored'),pointsAgainst:average('allowed'),recent};
+        };
+        const a=summarizeTeam(left),b=summarizeTeam(right);
+        if (!a.games || !b.games) return json({error:'Insufficient completed games returned by ESPN for one or both teams.'},502);
+        return json({source:'ESPN public scoreboard',league,fetchedAt:new Date().toISOString(),sample,left:a,right:b,partial:a.games<sample||b.games<sample,note:'Completed games within the available date window. Public ESPN date ranges may be truncated; historical coverage is not guaranteed.'});
+      } catch(e) { return json({error:e instanceof Error?e.message:'ESPN comparison unavailable'},502); }
+    }
     if (url.pathname.startsWith('/api/leagues/')) {
       if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
       const match = /^\\/api\\/leagues\\/(nfl|nhl|mlb|wnba|ncaaf|ncaam)\\/teams$/.exec(url.pathname);
