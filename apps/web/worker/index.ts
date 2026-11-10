@@ -246,23 +246,24 @@ export default {
     if (url.pathname.startsWith('/api/nba/')) {
       if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
       if (url.pathname === '/api/nba/teams') return json({ source: 'NBA team directory', teams: NBA_TEAMS });
-      const hasBdlKey = typeof env.BALLDONTLIE_API_KEY === 'string' && Boolean(env.BALLDONTLIE_API_KEY.trim());
+      const bdlKey = typeof env.BALLDONTLIE_API_KEY === 'string' && env.BALLDONTLIE_API_KEY.trim() ? env.BALLDONTLIE_API_KEY : null;
+       const hasBdlKey = bdlKey !== null;
       try {
         if (url.pathname === '/api/nba/games') {
           const date = url.searchParams.get('date') || new Date().toISOString().slice(0, 10);
           if (!validDate(date)) return json({ error: 'Invalid date' }, 400);
-          if (!hasBdlKey) return json({ message: 'Dated games endpoint requires BALLDONTLIE; use team comparison for ESPN fallback.' }, 503);
-          const data = await bdl('games?dates[]=' + encodeURIComponent(date) + '&per_page=100', env.BALLDONTLIE_API_KEY);
+          if (!bdlKey) return json({ message: 'Dated games endpoint requires BALLDONTLIE; use team comparison for ESPN fallback.' }, 503);
+          const data = await bdl('games?dates[]=' + encodeURIComponent(date) + '&per_page=100', bdlKey);
           return json({ source: 'BALLDONTLIE NBA API', fetchedAt: new Date().toISOString(), games: data.data });
         }
         if (url.pathname === '/api/nba/compare') {
           const left = Number(url.searchParams.get('left')), right = Number(url.searchParams.get('right'));
           const sample = Number(url.searchParams.get('sample') || 10);
           if (!Number.isInteger(left) || !Number.isInteger(right) || left <= 0 || right <= 0 || left === right || ![5,10,20].includes(sample)) return json({ error: 'Select two different teams and a valid sample.' }, 400);
-          if (!hasBdlKey) return json(await espnComparison(left, right, sample));
+          if (!bdlKey) return json(await espnComparison(left, right, sample));
           const end = new Date(), start = new Date(end.getTime() - 180 * 86400000);
           const query = (id: number) => 'games?team_ids[]=' + id + '&start_date=' + start.toISOString().slice(0,10) + '&end_date=' + end.toISOString().slice(0,10) + '&per_page=100';
-          const [a,b] = await Promise.all([bdl(query(left), env.BALLDONTLIE_API_KEY), bdl(query(right), env.BALLDONTLIE_API_KEY)]);
+          const [a,b] = await Promise.all([bdl(query(left), bdlKey), bdl(query(right), bdlKey)]);
           const leftGames = a.data as Game[], rightGames = b.data as Game[];
           const leftStats = summarize(leftGames, left, sample), rightStats = summarize(rightGames, right, sample);
           return json({ source: 'BALLDONTLIE NBA API', fetchedAt: new Date().toISOString(), sample, left: leftStats, right: rightStats, partial: Boolean(a.meta?.next_cursor || b.meta?.next_cursor), note: 'Completed games in the last 180 days. Results limited to the first 100 provider records per team; coverage may be incomplete. No injury or player statistics included.' });
