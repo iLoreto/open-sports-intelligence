@@ -8,24 +8,17 @@ function validDate(value: string): boolean { return /^\d{4}-\d{2}-\d{2}$/.test(v
 const NBA_ABBREVIATIONS = ['ATL','BOS','BKN','CHA','CHI','CLE','DAL','DEN','DET','GS','HOU','IND','LAC','LAL','MEM','MIA','MIL','MIN','NO','NY','OKC','ORL','PHI','PHX','POR','SAC','SA','TOR','UTAH','WSH'];
 async function espnComparison(left: number, right: number, sample: number) {
   const now = new Date();
-  const start = new Date(now.getTime() - 180 * 86400000);
-  const months: string[] = [];
-  const cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
-  while (cursor <= now) {
-    const year = cursor.getUTCFullYear(), month = cursor.getUTCMonth();
-    const first = Math.max(start.getTime(), Date.UTC(year, month, 1));
-    const last = Math.min(now.getTime(), Date.UTC(year, month + 1, 0));
-    const fmt = (ms: number) => new Date(ms).toISOString().slice(0, 10).replace(/-/g, '');
-    months.push(fmt(first) + '-' + fmt(last));
-    cursor.setUTCMonth(cursor.getUTCMonth() + 1);
-  }
-  type EspnCompetitor = { homeAway?: string; score?: string; team?: { abbreviation?: string } };
+  const start = new Date(now.getTime() - 210 * 86400000);
+  const fmt = (ms: number) => new Date(ms).toISOString().slice(0, 10).replace(/-/g, '');
+  const dates = fmt(start.getTime()) + '-' + fmt(now.getTime());
+  type EspnCompetitor = { homeAway?: string; score?: string; team?: { id?: string; abbreviation?: string } };
   type EspnEvent = { id?: string; date?: string; status?: { type?: { completed?: boolean } }; competitions?: { competitors?: EspnCompetitor[] }[] };
-  const pages = await Promise.all(months.map(async dates => {
-    const response = await fetch('https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=' + dates + '&limit=500', { signal: AbortSignal.timeout(12000) });
-    if (!response.ok) throw new Error('ESPN scoreboard HTTP ' + response.status);
+  const loadSchedule = async (teamId: number) => {
+    const response = await fetch('https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/' + teamId + '/schedule?dates=' + dates + '&limit=500', { signal: AbortSignal.timeout(12000) });
+    if (!response.ok) throw new Error('ESPN schedule HTTP ' + response.status);
     return response.json() as Promise<{ events?: EspnEvent[] }>;
-  }));
+  };
+  const pages = await Promise.all([loadSchedule(left), loadSchedule(right)]);
   const ids = new Map<string, number>();
   NBA_ABBREVIATIONS.forEach((abbr, i) => ids.set(abbr, i + 1));
   // Normalize ESPN abbreviations to the app's stable NBA team IDs.
@@ -37,7 +30,12 @@ async function espnComparison(left: number, right: number, sample: number) {
     const competitors = event.competitions?.[0]?.competitors || [];
     const home = competitors.find(c => c.homeAway === 'home'), away = competitors.find(c => c.homeAway === 'away');
     if (!home || !away) continue;
-    const homeId = ids.get(home.team?.abbreviation || ''), awayId = ids.get(away.team?.abbreviation || '');
+    const homeByAbbreviation = ids.get(home.team?.abbreviation || '');
+    const awayByAbbreviation = ids.get(away.team?.abbreviation || '');
+    const homeById = Number(home.team?.id);
+    const awayById = Number(away.team?.id);
+    const homeId = homeByAbbreviation || (Number.isInteger(homeById) && homeById >= 1 && homeById <= 30 ? homeById : undefined);
+    const awayId = awayByAbbreviation || (Number.isInteger(awayById) && awayById >= 1 && awayById <= 30 ? awayById : undefined);
     const hs = Number(home.score), as = Number(away.score);
     if (!homeId || !awayId || !Number.isFinite(hs) || !Number.isFinite(as)) continue;
     if (homeId !== left && awayId !== left && homeId !== right && awayId !== right) continue;
@@ -46,7 +44,7 @@ async function espnComparison(left: number, right: number, sample: number) {
   const all = [...games.values()];
   const a = summarize(all, left, sample), b = summarize(all, right, sample);
   if (!a.games || !b.games) throw new Error('ESPN returned no completed games for one or both selected teams.');
-  return { source: 'ESPN NBA scoreboard', fetchedAt: new Date().toISOString(), sample, left: a, right: b, partial: a.games < sample || b.games < sample, note: 'Completed NBA games from the last 180 days. ESPN public scoreboard; available sample sizes may be smaller than requested. No injury or player statistics included.' };
+  return { source: 'ESPN NBA scoreboard', fetchedAt: new Date().toISOString(), sample, left: a, right: b, partial: a.games < sample || b.games < sample, note: 'Completed NBA games from the available ESPN team schedule window. Public coverage may be smaller than requested. No injury or player statistics included.' };
 }
 function summarize(games: Game[], id: number, sample: number) {
   const played = games.filter(g => (g.home_team.id === id || g.visitor_team.id === id) && (g.status === 'Final' || g.status.startsWith('Final')) && Number.isFinite(g.home_team_score) && Number.isFinite(g.visitor_team_score))
@@ -124,20 +122,32 @@ export default {
           marketCursor = next;
         }
         const seen = new Set<string>();
-        for (const market of results.flat()) {
-          if (!market.ticker || !market.event_ticker || !eventTitles.has(market.event_ticker) || (market.status && !['open', 'active'].includes(market.status))) continue;
-          if (seen.has(market.ticker)) continue;
+        const addMarket = (market: Quote & { event_ticker?: string }, event: string) => {
+          if (!market.ticker || (market.status && !['open', 'active'].includes(market.status))) return;
+          if (seen.has(market.ticker)) return;
           seen.add(market.ticker);
           const quotes = [['YES', market.yes_ask_dollars], ['NO', market.no_ask_dollars]] as const;
           for (const [side, ask] of quotes) {
             if (typeof ask !== 'string' || !/^\d+(?:\.\d+)?$/.test(ask)) continue;
             quotedMarkets++;
             const cents = Math.round(Number(ask) * 100);
-            markets.push({ ticker: market.ticker, event: eventTitles.get(market.event_ticker) || market.event_ticker,
+            markets.push({ ticker: market.ticker, event,
               title: market.title || market.ticker, side, askCents: cents,
               yesBid: market.yes_bid_dollars ?? null, yesAsk: market.yes_ask_dollars ?? null,
               noAsk: market.no_ask_dollars ?? null, last: market.last_price_dollars ?? null,
               volume24h: market.volume_24h_fp ?? null });
+          }
+        };
+        for (const market of results.flat()) {
+          if (!market.event_ticker || !eventTitles.has(market.event_ticker)) continue;
+          addMarket(market, eventTitles.get(market.event_ticker) || market.event_ticker);
+        }
+        if (markets.length === 0) {
+          for (const event of sports) {
+            if (!event.event_ticker) continue;
+            for (const market of event.markets || []) {
+              addMarket(market, event.title || event.event_ticker);
+            }
           }
         }
         scanSignal.throwIfAborted();
