@@ -125,6 +125,13 @@ test('market scan returns non-empty moneyline results and honors league filter',
 		status: 'open',
 		yes_ask_dollars: '0.54',
 		no_ask_dollars: '0.46'
+	  }, {
+		ticker: 'NBA-SPREAD-EXAMPLE',
+		event_ticker: 'KX_UNKNOWN_NBA',
+		title: 'No PHN 8.5 points',
+		status: 'open',
+		yes_ask_dollars: '0.52',
+		no_ask_dollars: '0.48'
 	  }], cursor: '' });
 	}
 

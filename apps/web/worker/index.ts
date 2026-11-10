@@ -159,27 +159,31 @@ export default {
           marketCursor = next;
         }
         const seen = new Set<string>();
+        const isPlainTeamSide = (title: string): boolean => {
+          const titleText = title.toLowerCase().trim();
+          if (!/^yes\s+[a-z .'-]+$/.test(titleText) && !/^no\s+[a-z .'-]+$/.test(titleText)) return false;
+          if (/\b(over|under|spread|total|handicap|points?|yards?|rebounds?|assists?|shots?|goals?|by over|by under)\b/.test(titleText)) return false;
+          return true;
+        };
         const isMoneylineMarket = (event: string, title: string, ticker: string): boolean => {
           const text = (event + ' ' + title).toLowerCase();
-          const titleText = title.toLowerCase().trim();
           if (text.includes(',')) return false;
           if (/\b(over|under|spread|total|handicap|alternate line|alt line)\b/.test(text)) return false;
-          if (/\b(points?|yards?|rebounds?|assists?|shots?|goals?)\b/.test(text) && /\b(over|under|more|less|at least|to record)\b/.test(text)) return false;
+          if (/\b(points?|yards?|rebounds?|assists?|shots?|goals?)\b/.test(text) && /\b(over|under|more|less|at least|to record|by over|by under)\b/.test(text)) return false;
           if (/(?:^|\s)[+-]\d+(?:\.\d+)?(?:\s|$)/.test(text)) return false;
           const matchContext = /\b(at|vs|versus|v)\b/.test(text) || /@/.test(text) || /\b(match|game)\b/.test(text);
           const winnerSignal = /\bwin(?:s|ner)?\b|\bto win\b|\bmoneyline\b|\byes\b/.test(text);
-          const simpleTeamSide = /^yes\s+[a-z0-9 .'-]+$/.test(titleText) || /^no\s+[a-z0-9 .'-]+$/.test(titleText);
+          const simpleTeamSide = isPlainTeamSide(title);
           const tickerSignal = /(?:^|[-_])ml(?:$|[-_])/i.test(ticker);
           return (matchContext && winnerSignal) || simpleTeamSide || tickerSignal;
         };
         const isLeagueOutcomeContract = (event: string, title: string, ticker: string): boolean => {
           if (inferLeague(event, title, ticker) !== selectedLeague) return false;
           const text = (event + ' ' + title).toLowerCase();
-          const titleText = title.toLowerCase().trim();
-          if (/\b(over|under|spread|total|handicap|alternate line|alt line)\b/.test(text) && !/\bwins?\b/.test(text)) return false;
-          const teamSide = /^yes\s+[a-z0-9 .'-]+$/.test(titleText) || /^no\s+[a-z0-9 .'-]+$/.test(titleText);
-          const winnerSignal = /\bwin(?:s|ner)?\b|\bto win\b|\bmoneyline\b|\byes\b|\bno\b/.test(text);
-          return teamSide || winnerSignal;
+          if (text.includes(',')) return false;
+          if (/\b(over|under|spread|total|handicap|alternate line|alt line|points?|yards?|rebounds?|assists?|shots?|goals?)\b/.test(text)) return false;
+          if (/(?:^|\s)[+-]\d+(?:\.\d+)?(?:\s|$)/.test(text)) return false;
+          return isPlainTeamSide(title) || /(?:^|[-_])ml(?:$|[-_])/i.test(ticker);
         };
         const addMarket = (market: Quote & { event_ticker?: string }, event: string, mode: 'strict' | 'fallback' = 'strict') => {
           if (!market.ticker || (market.status && !['open', 'active'].includes(market.status))) return;
