@@ -36,3 +36,7 @@ If DB is not bound, the existing scan remains available but the response explici
 - [ ] Run preview smoke tests against authorized Novig data before enabling production requests.
 
 A cross-provider comparison must explicitly reconcile event identity, outcome and settlement terms; matching titles alone are insufficient.
+
+## Review convention
+
+R2 is the designated reviewer name in project documentation, PR descriptions, and review follow-ups. Request R2 review after CI and deployment verification; track R2 findings and resolutions in the PR conversation.
