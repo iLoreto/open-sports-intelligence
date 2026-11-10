@@ -135,10 +135,13 @@ test('market scan returns non-empty moneyline results and honors league filter',
 	  ['NBA-1-ML', 'YES', 58]
 	]);
 
-	const allResponse = await worker.fetch(request('/api/markets/scan?provider=kalshi&league=all&min=1&max=99', 'POST'), { ASSETS: assets });
-	assert.equal(allResponse.status, 200);
-	const allBody = await allResponse.json() as any;
-	assert.ok(allBody.markets.length >= 4);
+	const nflResponse = await worker.fetch(request('/api/markets/scan?provider=kalshi&league=nfl&min=1&max=99', 'POST'), { ASSETS: assets });
+	assert.equal(nflResponse.status, 200);
+	const nflBody = await nflResponse.json() as any;
+	assert.deepEqual(nflBody.markets.map((market: any) => [market.ticker, market.side, market.askCents]), [
+	  ['NFL-1-ML', 'YES', 47],
+	  ['NFL-1-ML', 'NO', 53]
+	]);
   } finally {
 	globalThis.fetch = originalFetch;
   }
