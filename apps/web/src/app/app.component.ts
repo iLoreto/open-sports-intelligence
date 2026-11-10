@@ -1,5 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { Component, signal } from '@angular/core';
+import { BUILD_ID } from './build-info';
 type Sport = 'nba' | 'tennis';
 interface Team { id: number; full_name: string; abbreviation?: string }
 interface Stats { games: number; wins: number; losses: number; pointsFor: number | null; pointsAgainst: number | null; recent: { date: string; scored: number; allowed: number; win: boolean }[] }
@@ -56,8 +57,10 @@ interface Comparison { source: string; fetchedAt: string; sample: number; left: 
         <a *ngFor="let m of result.markets" class="stats market-result" [href]="marketUrl(m)" target="_blank" rel="noopener noreferrer" [attr.aria-label]="'Open Kalshi market ' + m.title"><strong>{{ m.event }} ↗</strong><p>{{ m.title }} · {{ m.ticker }} · {{ m.side }} ask {{ m.askCents }}¢</p><p>YES bid {{ m.yesBid ?? '—' }} · YES ask {{ m.yesAsk ?? '—' }} · NO ask {{ m.noAsk ?? '—' }} · Last {{ m.last ?? '—' }} · 24h volume {{ m.volume24h ?? '—' }}</p></a>
       </ng-container>
     </section>
+    <footer class="build-footer" aria-label="Application build version">Build {{ buildId }}</footer>
   </main>`,
   styles: [`
+    .build-footer{margin:1.5rem auto 0;text-align:center;font:600 12px/1.5 monospace;letter-spacing:.04em;color:#9aa9ba;opacity:.95;}
     :host{display:block;min-height:100vh;background:#0b1220;color:#e7edf7;font:16px system-ui,sans-serif}
     .workbench{max-width:960px;margin:auto;padding:40px 20px 80px}header{margin-bottom:28px}h1{font-size:clamp(2rem,5vw,3.4rem);letter-spacing:-.04em;margin:10px 0}h2{margin:0 0 20px}h3{margin:0}
     p{color:#a9b7cc;line-height:1.55}.eyebrow{font-size:12px;font-weight:800;letter-spacing:.17em;color:#73d8d0}.sports{display:flex;gap:12px;margin-bottom:22px}.sports button{flex:1}
@@ -107,6 +110,7 @@ export class AppComponent {
     } catch(e) { if (id === this.scanId) this.scanError.set(e instanceof Error ? e.message : 'Scan unavailable'); }
     finally { if (id === this.scanId) this.scanLoading.set(false); }
   }
+  readonly buildId = BUILD_ID;
   readonly sport = signal<Sport>('nba');
   readonly teams = signal<Team[]>([]);
   readonly left = signal(0); readonly right = signal(0); readonly sample = signal(10);
