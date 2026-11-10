@@ -13,7 +13,7 @@ interface Comparison { source: string; fetchedAt: string; sample: number; left: 
   <main class="workbench">
     <header><div class="eyebrow">OPEN SPORTS INTELLIGENCE</div><h1>Sports Research Workbench</h1><p>Manual, sport-specific research. No automated scanning.</p></header>
     <nav class="sports" aria-label="Workspaces"><button [class.selected]="tab() === 'research'" (click)="chooseTab('research')">Research</button><button [class.selected]="tab() === 'markets'" (click)="chooseTab('markets')">Market Scanner</button></nav>
-    <ng-container *ngIf="tab() === 'research'"><nav class="sports" aria-label="Sports"><button [class.selected]="sport() === 'nba'" (click)="chooseSport('nba')">🏀 NBA</button><button *ngFor="let league of availableLeagues" [class.selected]="sport() === league.id" (click)="chooseSport(league.id)">{{ league.label }}</button></nav>
+    <ng-container *ngIf="tab() === 'research'"><nav class="sports" aria-label="Sports"><button *ngFor="let league of availableLeagues" [class.selected]="sport() === league.id" (click)="chooseSport(league.id)">{{ league.label }}</button></nav>
     <section class="panel" *ngIf="sport() === 'nba'">
       <div class="eyebrow">BALLDONTLIE / NBA</div><h2>Team vs team</h2>
       <p>Select two teams and a historical sample. The comparison calculates completed-game win/loss and scoring averages.</p>
@@ -124,14 +124,14 @@ export class AppComponent {
     this.requestId++; this.sport.set(value); this.teams.set([]); this.left.set(0); this.right.set(0); this.loading.set(false); this.comparison.set(null); this.error.set(''); if (value !== 'tennis') void this.loadTeams();
   }
   async loadTeams(): Promise<void> {
+    const selected = this.sport(); if (selected === 'tennis') return; const requestId = this.requestId; this.teamLoading.set(true);
     try {
-      const selected = this.sport(); if (selected === 'tennis') return; const requestId = this.requestId; this.teamLoading.set(true);
       const response = await fetch(selected === 'nba' ? '/api/nba/teams' : '/api/leagues/' + selected + '/teams', { cache: 'no-store' });
       const body = await response.json() as { teams?: Team[]; message?: string };
       if (!response.ok) throw new Error(body.message || 'Unable to load NBA teams');
       if (requestId === this.requestId && selected === this.sport()) this.teams.set((body.teams || []).filter(t => t.id && t.full_name).sort((a,b) => a.full_name.localeCompare(b.full_name)));
-    } catch(e) { this.error.set(e instanceof Error ? e.message : 'Unable to load teams'); }
-    finally { this.teamLoading.set(false); }
+    } catch(e) { if (requestId === this.requestId && selected === this.sport()) this.error.set(e instanceof Error ? e.message : 'Unable to load teams'); }
+    finally { if (requestId === this.requestId) this.teamLoading.set(false); }
   }
   async run(): Promise<void> {
     if (this.sport() !== 'nba' || !this.left() || !this.right() || this.left() === this.right()) return;
