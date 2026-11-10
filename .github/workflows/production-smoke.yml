@@ -1,0 +1,22 @@
+name: Production NBA smoke test
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 */6 * * *'
+  push:
+    branches: [main]
+concurrency:
+  group: production-nba-smoke
+  cancel-in-progress: false
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Exercise real deployed Worker and BALLDONTLIE-backed comparison
+        run: node apps/web/scripts/smoke-production.mjs
