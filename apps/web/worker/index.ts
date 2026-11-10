@@ -211,8 +211,19 @@ export default {
           return {games:recent.length,wins,losses:recent.length-wins-ties,ties,pointsFor:average('scored'),pointsAgainst:average('allowed'),recent};
         };
         const a=summarizeTeam(left),b=summarizeTeam(right);
+        const direct=games.filter(g=>(g.home===left&&g.away===right)||(g.home===right&&g.away===left)).slice(0,sample);
+        const h2h={games:direct.length,leftWins:direct.filter(g=>(g.home===left?g.hs:g.as)>(g.home===left?g.as:g.hs)).length,rightWins:direct.filter(g=>(g.home===right?g.hs:g.as)>(g.home===right?g.as:g.hs)).length,ties:direct.filter(g=>g.hs===g.as).length,meetings:direct.map(g=>({date:g.date.slice(0,10),leftScore:g.home===left?g.hs:g.as,rightScore:g.home===right?g.hs:g.as}))};
+        const metricProfiles:Record<string,{unit:string;formMetrics:string[];advancedMetrics:string[]}>={
+          nfl:{unit:'points',formMetrics:['pointsFor','pointsAgainst','wins','losses','ties'],advancedMetrics:['yardsPerPlay','passingYards','rushingYards','turnovers','thirdDownEfficiency']},
+          ncaaf:{unit:'points',formMetrics:['pointsFor','pointsAgainst','wins','losses','ties'],advancedMetrics:['yardsPerPlay','passingYards','rushingYards','turnovers','thirdDownEfficiency']},
+          nhl:{unit:'goals',formMetrics:['pointsFor','pointsAgainst','wins','losses'],advancedMetrics:['shotsOnGoal','savePercentage','powerPlayPercentage','penaltyKillPercentage']},
+          mlb:{unit:'runs',formMetrics:['pointsFor','pointsAgainst','wins','losses'],advancedMetrics:['hits','earnedRunAverage','whip','onBasePercentage','bullpenEra']},
+          wnba:{unit:'points',formMetrics:['pointsFor','pointsAgainst','wins','losses'],advancedMetrics:['fieldGoalPercentage','rebounds','assists','turnovers']},
+          ncaam:{unit:'points',formMetrics:['pointsFor','pointsAgainst','wins','losses'],advancedMetrics:['fieldGoalPercentage','rebounds','assists','turnovers','offensiveEfficiency']}
+        };
+        const profile=metricProfiles[league];
         if (!a.games || !b.games) return json({error:'Insufficient completed games returned by ESPN for one or both teams.'},502);
-        return json({source:'ESPN public scoreboard',league,fetchedAt:new Date().toISOString(),sample,left:a,right:b,partial:a.games<sample||b.games<sample,note:'Completed games within the available date window. Public ESPN date ranges may be truncated; historical coverage is not guaranteed.'});
+        return json({source:'ESPN public scoreboard',league,fetchedAt:new Date().toISOString(),sample,left:a,right:b,h2h,metricProfile:{unit:profile.unit,available:profile.formMetrics,unavailable:profile.advancedMetrics},partial:a.games<sample||b.games<sample,note:'Completed games within the available date window. Public ESPN date ranges may be truncated; historical coverage is not guaranteed.'});
       } catch(e) { return json({error:e instanceof Error?e.message:'ESPN comparison unavailable'},502); }
     }
     if (url.pathname.startsWith('/api/leagues/')) {
