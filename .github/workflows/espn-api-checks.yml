@@ -1,0 +1,21 @@
+name: ESPN public API live checks
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 9 * * *'
+  pull_request:
+    paths:
+      - 'docs/espn-api/**'
+      - 'scripts/espn-api-smoke.mjs'
+      - '.github/workflows/espn-api-checks.yml'
+jobs:
+  live-probes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node scripts/espn-api-smoke.mjs
