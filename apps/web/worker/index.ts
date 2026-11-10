@@ -1,6 +1,7 @@
 interface Environment { ASSETS: { fetch(request: Request): Promise<Response> }; BALLDONTLIE_API_KEY?: string }
 type Team = { id: number; full_name: string };
 type Game = { id: number; date: string; status: string; home_team: Team; visitor_team: Team; home_team_score: number; visitor_team_score: number };
+const NBA_TEAMS: Team[] = [{"id":1,"full_name":"Atlanta Hawks"},{"id":2,"full_name":"Boston Celtics"},{"id":3,"full_name":"Brooklyn Nets"},{"id":4,"full_name":"Charlotte Hornets"},{"id":5,"full_name":"Chicago Bulls"},{"id":6,"full_name":"Cleveland Cavaliers"},{"id":7,"full_name":"Dallas Mavericks"},{"id":8,"full_name":"Denver Nuggets"},{"id":9,"full_name":"Detroit Pistons"},{"id":10,"full_name":"Golden State Warriors"},{"id":11,"full_name":"Houston Rockets"},{"id":12,"full_name":"Indiana Pacers"},{"id":13,"full_name":"LA Clippers"},{"id":14,"full_name":"Los Angeles Lakers"},{"id":15,"full_name":"Memphis Grizzlies"},{"id":16,"full_name":"Miami Heat"},{"id":17,"full_name":"Milwaukee Bucks"},{"id":18,"full_name":"Minnesota Timberwolves"},{"id":19,"full_name":"New Orleans Pelicans"},{"id":20,"full_name":"New York Knicks"},{"id":21,"full_name":"Oklahoma City Thunder"},{"id":22,"full_name":"Orlando Magic"},{"id":23,"full_name":"Philadelphia 76ers"},{"id":24,"full_name":"Phoenix Suns"},{"id":25,"full_name":"Portland Trail Blazers"},{"id":26,"full_name":"Sacramento Kings"},{"id":27,"full_name":"San Antonio Spurs"},{"id":28,"full_name":"Toronto Raptors"},{"id":29,"full_name":"Utah Jazz"},{"id":30,"full_name":"Washington Wizards"}];
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
 function validDate(value: string): boolean { return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value)); }
 async function bdl(path: string, key: string): Promise<{ data: unknown[]; meta?: { next_cursor?: number | null } }> {
@@ -119,12 +120,9 @@ export default {
     }
     if (url.pathname.startsWith('/api/nba/')) {
       if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
-      if (!env.BALLDONTLIE_API_KEY) return json({ message: 'BALLDONTLIE_API_KEY Worker secret is missing.' }, 503);
+      if (url.pathname === '/api/nba/teams') return json({ source: 'NBA team directory', teams: NBA_TEAMS });
+      if (!env.BALLDONTLIE_API_KEY) return json({ message: 'NBA comparisons require BALLDONTLIE_API_KEY; team selection is available.' }, 503);
       try {
-        if (url.pathname === '/api/nba/teams') {
-          const data = await bdl('teams', env.BALLDONTLIE_API_KEY);
-          return json({ source: 'BALLDONTLIE NBA API', fetchedAt: new Date().toISOString(), teams: data.data });
-        }
         if (url.pathname === '/api/nba/games') {
           const date = url.searchParams.get('date') || new Date().toISOString().slice(0, 10);
           if (!validDate(date)) return json({ error: 'Invalid date' }, 400);
