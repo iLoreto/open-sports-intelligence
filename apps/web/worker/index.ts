@@ -88,11 +88,11 @@ export default {
       const max = Number(url.searchParams.get('max') ?? '70');
       if (!Number.isInteger(min) || !Number.isInteger(max) || min < 1 || max > 99 || min > max)
         return json({ error: 'Specify a valid price range from 1 to 99 cents, minimum not exceeding maximum.' }, 400);
-      const scanLeagues = ['all', 'nba', 'nfl', 'nhl', 'mlb', 'wnba', 'ncaaf', 'ncaam'] as const;
+      const scanLeagues = ['nba', 'nfl', 'nhl', 'mlb', 'wnba', 'ncaaf', 'ncaam'] as const;
       type ScanLeague = (typeof scanLeagues)[number];
-      const selectedLeague = ((url.searchParams.get('league') || 'all').toLowerCase()) as ScanLeague;
+      const selectedLeague = ((url.searchParams.get('league') || 'nba').toLowerCase()) as ScanLeague;
       if (!scanLeagues.includes(selectedLeague)) return json({ error: 'Unsupported league filter' }, 400);
-      const inferLeague = (event: string, title: string, ticker: string): Exclude<ScanLeague, 'all'> | null => {
+      const inferLeague = (event: string, title: string, ticker: string): ScanLeague | null => {
         const text = (event + ' ' + title + ' ' + ticker).toLowerCase();
         if (/\bwnba\b/.test(text)) return 'wnba';
         if (/\bncaaf\b|college football/.test(text)) return 'ncaaf';
@@ -100,10 +100,10 @@ export default {
         if (/\bnfl\b|super bowl|pro football/.test(text)) return 'nfl';
         if (/\bnhl\b|stanley cup|hockey/.test(text)) return 'nhl';
         if (/\bmlb\b|world series|baseball/.test(text)) return 'mlb';
-        if (/\bnba\b|basketball/.test(text)) return 'nba';
+        if (/\bnba\b|basketball|celtics|76ers|lakers|warriors|knicks|bulls|bucks|heat|nets|suns|mavericks|spurs|raptors|cavaliers|nuggets|timberwolves|pelicans|thunder|magic|grizzlies|hawks|hornets|pistons|pacers|rockets|clippers|trail blazers|wizards|jazz|kings|bos|phi\b/.test(text)) return 'nba';
         return null;
       };
-      const leagueLabel = (league: ScanLeague): string => league === 'all' ? 'All sports' : league.toUpperCase();
+      const leagueLabel = (league: ScanLeague): string => league.toUpperCase();
       try {
         const fetchSnapshot = async (scanSignal: AbortSignal): Promise<ScanSnapshot> => {
         // On-demand only. A single D1 snapshot is shared across users and price ranges.
@@ -191,12 +191,10 @@ export default {
           if (!market.event_ticker || !eventTitles.has(market.event_ticker)) continue;
           addMarket(market, eventTitles.get(market.event_ticker) || market.event_ticker);
         }
-        if (markets.length === 0) {
-          for (const event of sports) {
-            if (!event.event_ticker) continue;
-            for (const market of event.markets || []) {
-              addMarket(market, event.title || event.event_ticker);
-            }
+        for (const event of sports) {
+          if (!event.event_ticker) continue;
+          for (const market of event.markets || []) {
+            addMarket(market, event.title || event.event_ticker);
           }
         }
         scanSignal.throwIfAborted();
@@ -208,7 +206,7 @@ export default {
         const result = env.DB
           ? await sharedScan(env.DB, min, max, fetchSnapshot)
           : uncachedScan(await fetchSnapshot(request.signal), min, max);
-        const leagueFiltered = selectedLeague === 'all' ? result.markets : result.markets.filter((market) => inferLeague(market.event, market.title, market.ticker) === selectedLeague);
+        const leagueFiltered = result.markets.filter((market) => inferLeague(market.event, market.title, market.ticker) === selectedLeague);
         return json({ ...result, markets: leagueFiltered, note: result.note + ' League filter: ' + leagueLabel(selectedLeague) + '.' });
       } catch (e) { return json({ error: e instanceof Error ? e.message : 'Kalshi feed unavailable' }, 502); }
     }

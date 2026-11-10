@@ -2,7 +2,7 @@ import { CommonModule } from '@angular/common';
 import { Component, signal } from '@angular/core';
 import { BUILD_ID } from './build-info';
 type Sport = 'nba' | 'nfl' | 'nhl' | 'mlb' | 'wnba' | 'ncaaf' | 'ncaam' | 'tennis';
-type ScanLeague = 'all' | Exclude<Sport, 'tennis'>;
+type ScanLeague = Exclude<Sport, 'tennis'>;
 interface Team { id: number | string; full_name: string; abbreviation?: string }
 interface Stats { games: number; wins: number; losses: number; ties?: number; pointsFor: number | null; pointsAgainst: number | null; recent: { date: string; scored: number; allowed: number; win: boolean }[] }
 interface Market { ticker: string; event: string; title: string; side: 'YES' | 'NO'; askCents: number; yesBid: string | null; yesAsk: string | null; noAsk: string | null; last: string | null; volume24h: string | null }
@@ -14,7 +14,8 @@ interface Comparison { source: string; fetchedAt: string; sample: number; left: 
   <main class="workbench">
     <header><div class="eyebrow">OPEN SPORTS INTELLIGENCE</div><h1>Sports Research Workbench</h1><p>Manual, sport-specific research. No automated scanning.</p></header>
     <nav class="sports" aria-label="Workspaces"><button [class.selected]="tab() === 'research'" (click)="chooseTab('research')">Research</button><button [class.selected]="tab() === 'markets'" (click)="chooseTab('markets')">Market Scanner</button></nav>
-    <ng-container *ngIf="tab() === 'research'"><nav class="sports" aria-label="Sports"><button *ngFor="let league of availableLeagues" [class.selected]="sport() === league.id" (click)="chooseSport(league.id)"><svg *ngIf="league.id === 'tennis'" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" style="vertical-align:-3px;margin-right:5px"><circle cx="12" cy="12" r="10" fill="#c6e948" stroke="#75962b" stroke-width="1"/><path d="M5.2 4.6C11 8 11 16 5.2 19.4M18.8 4.6C13 8 13 16 18.8 19.4" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>{{ league.label }}</button></nav>
+    <nav class="sports" aria-label="Sports"><button *ngFor="let league of availableLeagues" [class.selected]="sport() === league.id" (click)="chooseSport(league.id)"><svg *ngIf="league.id === 'tennis'" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" style="vertical-align:-3px;margin-right:5px"><circle cx="12" cy="12" r="10" fill="#c6e948" stroke="#75962b" stroke-width="1"/><path d="M5.2 4.6C11 8 11 16 5.2 19.4M18.8 4.6C13 8 13 16 18.8 19.4" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>{{ league.label }}</button></nav>
+    <ng-container *ngIf="tab() === 'research'">
     <section class="panel" *ngIf="sport() !== 'tennis'">
       <div class="eyebrow">{{ sport().toUpperCase() }} / TEAM COMPARISON</div><h2>Team vs team</h2>
       <p>Select two teams and a historical sample. The comparison calculates completed-game win/loss and scoring averages.</p>
@@ -37,9 +38,8 @@ interface Comparison { source: string; fetchedAt: string; sample: number; left: 
         </div><div class="stats" *ngIf="c.h2h as h"><h3>Direct head-to-head</h3><p>{{ h.games }} verified meetings in retrieved history · {{ teamName(left()) }}: {{ h.leftWins }} wins · {{ teamName(right()) }}: {{ h.rightWins }} wins · {{ h.ties }} ties</p><p *ngFor="let g of h.meetings">{{ g.date | date:'shortDate' }} · {{ g.leftScore }}–{{ g.rightScore }}</p><p *ngIf="!h.games">No direct meetings found in the retrieved window.</p></div><p class="hint" *ngIf="c.metricProfile">Advanced {{ sport().toUpperCase() }} metrics not yet available: {{ c.metricProfile.unavailable.join(', ') }}.</p><p class="hint">{{ c.note }} <strong *ngIf="c.partial">Provider pagination indicates incomplete coverage.</strong></p>
       </ng-container>
     </section></ng-container>
-    <section class="panel" *ngIf="tab() === 'markets'"><div class="eyebrow">MANUAL MARKET RESEARCH</div><h2>Market Scanner</h2><p>Select a provider, league, and ask range, then press Scan to retrieve a new market snapshot. No scheduled scans or automatic refresh.</p>
+    <section class="panel" *ngIf="tab() === 'markets'"><div class="eyebrow">MANUAL MARKET RESEARCH</div><h2>Market Scanner</h2><p>Select a provider and ask range, then press Scan to retrieve a new market snapshot for the selected league. No scheduled scans or automatic refresh.</p>
       <div class="sports"><button [class.selected]="provider() === 'kalshi'" (click)="chooseProvider('kalshi')">Kalshi</button><button [class.selected]="provider() === 'novig'" (click)="chooseProvider('novig')">Novig</button></div>
-      <div class="sports" aria-label="Scanner leagues"><button *ngFor="let league of scanLeagues" [class.selected]="scanLeague() === league.id" (click)="chooseScanLeague(league.id)">{{ league.label }}</button></div>
       <div class="range-header"><strong>Ask price range</strong><strong>{{ minPrice() }}¢ – {{ maxPrice() }}¢</strong></div>
       <div class="range-control" role="group" aria-label="Contract price range">
         <div class="range-values"><label for="min-ask">Minimum: {{ minPrice() }}¢</label><label for="max-ask">Maximum: {{ maxPrice() }}¢</label></div>
@@ -102,7 +102,6 @@ export class AppComponent {
   private scanId = 0;
   chooseTab(value: 'research' | 'markets'): void { this.tab.set(value); this.scanId++; this.scanLoading.set(false); this.scanError.set(''); this.scanResult.set(null); }
   chooseProvider(value: 'kalshi' | 'novig'): void { this.provider.set(value); this.scanId++; this.scanLoading.set(false); this.scanError.set(''); this.scanResult.set(null); }
-  chooseScanLeague(value: ScanLeague): void { this.scanLeague.set(value); this.invalidateScan(); }
   async scan(): Promise<void> {
     if (this.provider() !== 'kalshi' || this.scanLoading() || !this.validPriceRange()) return;
     const id = ++this.scanId; this.scanLoading.set(true); this.scanError.set(''); this.scanResult.set(null);
@@ -116,7 +115,6 @@ export class AppComponent {
   }
   readonly buildId = BUILD_ID;
   readonly availableLeagues: { id: Sport; label: string }[] = [{id:'nba',label:'🏀 NBA'},{id:'nfl',label:'🏈 NFL'},{id:'nhl',label:'🏒 NHL'},{id:'mlb',label:'⚾ MLB'},{id:'wnba',label:'🏀 WNBA'},{id:'ncaaf',label:'🏈 NCAA Football'},{id:'ncaam',label:'🏀 NCAA Basketball'},{id:'tennis',label:'Tennis'}];
-  readonly scanLeagues: { id: ScanLeague; label: string }[] = [{id:'all',label:'All leagues'},{id:'nba',label:'NBA'},{id:'nfl',label:'NFL'},{id:'nhl',label:'NHL'},{id:'mlb',label:'MLB'},{id:'wnba',label:'WNBA'},{id:'ncaaf',label:'NCAA Football'},{id:'ncaam',label:'NCAA Basketball'}];
   readonly sport = signal<Sport>('nba');
   readonly scanLeague = signal<ScanLeague>('nba');
   readonly teamLoading = signal(false);
