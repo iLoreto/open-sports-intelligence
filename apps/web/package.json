@@ -10,7 +10,9 @@
     "preview": "npm run build && wrangler dev",
     "deploy": "npm run build && wrangler deploy",
     "test:cache": "node --experimental-strip-types --test worker/scan-cache.test.ts",
-    "test:nba-api": "node --experimental-strip-types --test worker/nba-api.test.ts"
+    "test:nba-api": "node --experimental-strip-types --test worker/nba-api.test.ts",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed"
   },
   "dependencies": {
     "@angular/common": "^22.0.0",
@@ -24,6 +26,7 @@
     "@angular/build": "^22.0.0",
     "@angular/cli": "^22.0.0",
     "@angular/compiler-cli": "^22.0.0",
+    "@playwright/test": "^1.56.1",
     "typescript": "~6.0.0",
     "wrangler": "^4.68.0"
   }
