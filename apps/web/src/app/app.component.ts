@@ -13,7 +13,7 @@ interface Comparison { source: string; fetchedAt: string; sample: number; left: 
   template: `
   <main class="workbench">
     <header><div class="eyebrow">OPEN SPORTS INTELLIGENCE</div><h1>Sports Research Workbench</h1><p>Manual, sport-specific research. No automated scanning.</p></header>
-    <p><a href="/how-we-read-the-game.html" style="color:#9fd6ed;font-weight:600">How We Read the Game — Our research methodology →</a></p>\n    <nav class="sports" aria-label="Workspaces"><button [class.selected]="tab() === 'research'" (click)="chooseTab('research')">Research</button><button [class.selected]="tab() === 'markets'" (click)="chooseTab('markets')">Market Scanner</button></nav>
+    <nav class="sports" aria-label="Workspaces"><button [class.selected]="tab() === 'research'" (click)="chooseTab('research')">Research</button><button [class.selected]="tab() === 'markets'" (click)="chooseTab('markets')">Market Scanner</button><a class="methodology-nav" href="/how-we-read-the-game.html" aria-label="Read Radar Methodology and discipline rules">Radar Methodology</a></nav>
     <nav class="sports" aria-label="Sports"><button *ngFor="let league of availableLeagues" [class.selected]="sport() === league.id" (click)="chooseSport(league.id)"><svg *ngIf="league.id === 'tennis'" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" style="vertical-align:-3px;margin-right:5px"><circle cx="12" cy="12" r="10" fill="#c6e948" stroke="#75962b" stroke-width="1"/><path d="M5.2 4.6C11 8 11 16 5.2 19.4M18.8 4.6C13 8 13 16 18.8 19.4" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>{{ league.label }}</button></nav>
     <ng-container *ngIf="tab() === 'research'">
     <section class="panel" *ngIf="sport() !== 'tennis'">
@@ -62,6 +62,7 @@ interface Comparison { source: string; fetchedAt: string; sample: number; left: 
     <footer class="build-footer" aria-label="Application build version">Build {{ buildId }}</footer>
   </main>`,
   styles: [`
+    .methodology-nav{display:inline-flex;align-items:center;justify-content:center;padding:10px 16px;border:1px solid #70b8da;border-radius:9px;color:#c7edff;background:#15304a;font-weight:700;text-decoration:none;min-height:42px;white-space:nowrap}.methodology-nav:hover,.methodology-nav:focus-visible{background:#225272;color:#fff;outline-offset:3px}
     .build-footer{margin:1.5rem auto 0;text-align:center;font:600 12px/1.5 monospace;letter-spacing:.04em;color:#9aa9ba;opacity:.95;}
     :host{display:block;min-height:100vh;background:#0b1220;color:#e7edf7;font:16px system-ui,sans-serif}
     .workbench{max-width:960px;margin:auto;padding:40px 20px 80px}header{margin-bottom:28px}h1{font-size:clamp(2rem,5vw,3.4rem);letter-spacing:-.04em;margin:10px 0}h2{margin:0 0 20px}h3{margin:0}
