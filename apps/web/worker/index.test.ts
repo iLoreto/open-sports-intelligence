@@ -132,6 +132,20 @@ test('market scan returns non-empty moneyline results and honors league filter',
 		status: 'open',
 		yes_ask_dollars: '0.52',
 		no_ask_dollars: '0.48'
+	  }, {
+		ticker: 'KXNBARETIRE-KLEONARD-2031',
+		event_ticker: 'KX_UNKNOWN_NBA',
+		title: 'Will Kawhi Leonard announce his retirement before the 2030-31 NBA season?',
+		status: 'open',
+		yes_ask_dollars: '0.50',
+		no_ask_dollars: '0.50'
+	  }, {
+		ticker: 'KXNBASEATTLE-30',
+		event_ticker: 'KX_UNKNOWN_NBA',
+		title: 'Will a Seattle NBA team play a game before 2030?',
+		status: 'open',
+		yes_ask_dollars: '0.83',
+		no_ask_dollars: '0.21'
 	  }], cursor: '' });
 	}
 
