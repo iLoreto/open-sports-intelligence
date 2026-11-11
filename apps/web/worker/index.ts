@@ -180,10 +180,13 @@ export default {
         const isLeagueOutcomeContract = (event: string, title: string, ticker: string): boolean => {
           if (inferLeague(event, title, ticker) !== selectedLeague) return false;
           const text = (event + ' ' + title).toLowerCase();
+          const titleText = title.toLowerCase().trim();
           if (text.includes(',')) return false;
           if (/\b(over|under|spread|total|handicap|alternate line|alt line|points?|yards?|rebounds?|assists?|shots?|goals?)\b/.test(text)) return false;
           if (/(?:^|\s)[+-]\d+(?:\.\d+)?(?:\s|$)/.test(text)) return false;
-          return isPlainTeamSide(title) || /(?:^|[-_])ml(?:$|[-_])/i.test(ticker);
+          const explicitMl = /(?:^|[-_])ml(?:$|[-_])/i.test(ticker);
+          const binaryQuestion = /^(will|who|which|can|to)\b/.test(titleText) || /\?$/.test(titleText) || /\b(stanley cup|playoffs?)\b/.test(text);
+          return isPlainTeamSide(title) || explicitMl || binaryQuestion;
         };
         const addMarket = (market: Quote & { event_ticker?: string }, event: string, mode: 'strict' | 'fallback' = 'strict') => {
           if (!market.ticker || (market.status && !['open', 'active'].includes(market.status))) return;
