@@ -172,18 +172,23 @@ export default {
           if (/\b(over|under|spread|total|handicap|alternate line|alt line)\b/.test(text)) return false;
           if (/\b(points?|yards?|rebounds?|assists?|shots?|goals?)\b/.test(text) && /\b(over|under|more|less|at least|to record|by over|by under)\b/.test(text)) return false;
           if (/(?:^|\s)[+-]\d+(?:\.\d+)?(?:\s|$)/.test(text)) return false;
+          if (/\b(retire(?:ment)?|career|debut|host|champion|championship|playoff drought|qualifier|qualifiers|before(?:\s+the)?\s+\d{4}|through(?:\s+the)?\s+\d{4}|season)\b/.test(text)) return false;
           const matchContext = /\b(at|vs|versus|v)\b/.test(text) || /@/.test(text) || /\b(match|game)\b/.test(text);
           const winnerSignal = /\bwin(?:s|ner)?\b|\bto win\b|\bmoneyline\b|\byes\b/.test(text);
           const simpleTeamSide = isPlainTeamSide(title);
           const tickerSignal = /(?:^|[-_])ml(?:$|[-_])/i.test(ticker);
-          return (matchContext && winnerSignal) || simpleTeamSide || tickerSignal;
+          return (matchContext && (winnerSignal || simpleTeamSide)) || tickerSignal;
         };
         const isLeagueOutcomeContract = (event: string, title: string, ticker: string): boolean => {
           const text = (event + ' ' + title).toLowerCase();
+          const titleText = title.toLowerCase().trim();
           if (text.includes(',')) return false;
           if (/\b(over|under|spread|total|handicap|alternate line|alt line|points?|yards?|rebounds?|assists?|shots?|goals?)\b/.test(text)) return false;
           if (/(?:^|\s)[+-]\d+(?:\.\d+)?(?:\s|$)/.test(text)) return false;
-          return true;
+          if (/\b(retire(?:ment)?|career|debut|host|champion|championship|playoff drought|qualifier|qualifiers|before\s+the\s+\d{4}|through\s+the\s+\d{4}|season)\b/.test(text)) return false;
+          const gameContext = /\b(at|vs|versus|v)\b/.test(text) || /@/.test(text) || /\b(match|game)\b/.test(text);
+          const explicitMl = /(?:^|[-_])ml(?:$|[-_])/i.test(ticker);
+          return (gameContext && isPlainTeamSide(titleText)) || explicitMl;
         };
         const addMarket = (market: Quote & { event_ticker?: string }, event: string, mode: 'strict' | 'fallback' = 'strict') => {
           if (!market.ticker || (market.status && !['open', 'active'].includes(market.status))) return;
