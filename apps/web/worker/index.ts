@@ -94,12 +94,12 @@ export default {
       if (!scanLeagues.includes(selectedLeague)) return json({ error: 'Unsupported league filter' }, 400);
       const inferLeague = (event: string, title: string, ticker: string): ScanLeague | null => {
         const text = (event + ' ' + title + ' ' + ticker).toLowerCase();
-        if (/\bwnba\b/.test(text)) return 'wnba';
-        if (/\bncaaf\b|college football/.test(text)) return 'ncaaf';
-        if (/\bncaam\b|mens college basketball|men\'s college basketball|ncaa basketball|college basketball/.test(text)) return 'ncaam';
-        if (/\bnfl\b|super bowl|pro football/.test(text)) return 'nfl';
-        if (/\bnhl\b|stanley cup|hockey/.test(text)) return 'nhl';
-        if (/\bmlb\b|world series|baseball/.test(text)) return 'mlb';
+        if (/kxwnba|\bwnba\b/.test(text)) return 'wnba';
+        if (/kxncaaf|\bncaaf\b|college football/.test(text)) return 'ncaaf';
+        if (/kxncaam|\bncaam\b|mens college basketball|men\'s college basketball|ncaa basketball|college basketball/.test(text)) return 'ncaam';
+        if (/kxnfl|\bnfl\b|super bowl|pro football/.test(text)) return 'nfl';
+        if (/kxnhl|\bnhl\b|stanley cup|hockey/.test(text)) return 'nhl';
+        if (/kxmlb|\bmlb\b|world series|baseball/.test(text)) return 'mlb';
         if (/\bnba\b|celtics|76ers|lakers|warriors|knicks|bulls|bucks|heat|nets|suns|mavericks|spurs|raptors|cavaliers|nuggets|timberwolves|pelicans|thunder|magic|grizzlies|hawks|hornets|pistons|pacers|rockets|clippers|trail blazers|wizards|jazz|kings|\bbos\b|\bphi\b|boston pro basketball|philadelphia pro basketball/.test(text)) return 'nba';
         if (/wins by over\s+\d+(?:\.\d+)?\s+points/.test(text) && /\b(boston|philadelphia|new york|miami|phoenix|orlando|oklahoma city|san antonio|toronto|utah|washington|chicago|cleveland|dallas|denver|detroit|houston|indiana|memphis|minnesota|new orleans|portland|sacramento|los angeles|milwaukee|atlanta|charlotte)\b/.test(text)) return 'nba';
         return null;
@@ -113,14 +113,16 @@ export default {
         type Event = { event_ticker?: string; title?: string; category?: string; markets?: Quote[] };
         const markets: ScanSnapshot['markets'] = [];
         let cursor = ''; let pagesScanned = 0; let sportsEvents = 0; let nestedMarkets = 0; let quotedMarkets = 0;
+        let rateLimited = false;
         const sports: Event[] = [];
         // Collect sports events first. Event listings are not guaranteed to contain usable quote data.
-        for (let pageNumber = 0; pageNumber < 5; pageNumber++) {
+        for (let pageNumber = 0; pageNumber < 20; pageNumber++) {
           const query = new URLSearchParams({ status: 'open', limit: '200', with_nested_markets: 'true' });
           if (cursor) query.set('cursor', cursor);
           const response = await fetch(endpoint + '/events?' + query.toString(), {
             headers: { Accept: 'application/json' }, signal: AbortSignal.any([scanSignal, AbortSignal.timeout(13000)])
           });
+          if (response.status === 429) { rateLimited = true; break; }
           if (!response.ok) throw new Error('Kalshi events HTTP ' + response.status);
           const page = await response.json() as { events?: Event[]; cursor?: string };
           if (!Array.isArray(page.events)) throw new Error('Unexpected Kalshi event response');
@@ -141,7 +143,6 @@ export default {
         const results: (Quote & { event_ticker?: string })[][] = [];
         let marketCursor = '';
         let marketPagesScanned = 0;
-        let rateLimited = false;
         for (let pageNumber = 0; pageNumber < 10; pageNumber++) {
           const query = new URLSearchParams({ status: 'open', limit: '1000' });
           if (marketCursor) query.set('cursor', marketCursor);
@@ -178,12 +179,11 @@ export default {
           return (matchContext && winnerSignal) || simpleTeamSide || tickerSignal;
         };
         const isLeagueOutcomeContract = (event: string, title: string, ticker: string): boolean => {
-          if (inferLeague(event, title, ticker) !== selectedLeague) return false;
           const text = (event + ' ' + title).toLowerCase();
           if (text.includes(',')) return false;
           if (/\b(over|under|spread|total|handicap|alternate line|alt line|points?|yards?|rebounds?|assists?|shots?|goals?)\b/.test(text)) return false;
           if (/(?:^|\s)[+-]\d+(?:\.\d+)?(?:\s|$)/.test(text)) return false;
-          return isPlainTeamSide(title) || /(?:^|[-_])ml(?:$|[-_])/i.test(ticker);
+          return true;
         };
         const addMarket = (market: Quote & { event_ticker?: string }, event: string, mode: 'strict' | 'fallback' = 'strict') => {
           if (!market.ticker || (market.status && !['open', 'active'].includes(market.status))) return;
@@ -224,7 +224,7 @@ export default {
         const modeNote = markets.length ? 'Results prioritize moneyline contracts and may fall back to team-outcome contracts when no moneyline matches are found for the selected league.' : 'No contracts matched the selected league and range in this snapshot.';
         return { source: 'Kalshi public API', provider, scannedAt: new Date().toISOString(),
           sportsEvents, pagesScanned, nestedMarkets, quotedMarkets, fetchedMarkets: results.reduce((n, group) => n + group.length, 0), marketPagesScanned, rateLimited, markets, partialCoverage: Boolean(cursor || marketCursor || rateLimited),
-          note: 'Sports-only, on-demand scan. ' + modeNote + ' Quotes are displayed by contract side (YES/NO) at the current ask. Up to five event pages and ten market pages are checked. Coverage is partial when additional pages exist or rate limiting occurs.' };
+          note: 'Sports-only, on-demand scan. ' + modeNote + ' Quotes are displayed by contract side (YES/NO) at the current ask. Up to twenty event pages and ten market pages are checked. Coverage is partial when additional pages exist or rate limiting occurs.' };
         };
         const result = env.DB
           ? await sharedScan(env.DB, min, max, fetchSnapshot)
