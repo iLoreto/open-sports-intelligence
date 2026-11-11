@@ -168,6 +168,7 @@ export default {
         };
         const isMoneylineMarket = (event: string, title: string, ticker: string): boolean => {
           const text = (event + ' ' + title).toLowerCase();
+          const titleText = title.toLowerCase().trim();
           if (text.includes(',')) return false;
           if (/\b(over|under|spread|total|handicap|alternate line|alt line)\b/.test(text)) return false;
           if (/\b(points?|yards?|rebounds?|assists?|shots?|goals?)\b/.test(text) && /\b(over|under|more|less|at least|to record|by over|by under)\b/.test(text)) return false;
@@ -176,8 +177,9 @@ export default {
           const matchContext = /\b(at|vs|versus|v)\b/.test(text) || /@/.test(text) || /\b(match|game)\b/.test(text);
           const winnerSignal = /\bwin(?:s|ner)?\b|\bto win\b|\bmoneyline\b|\byes\b/.test(text);
           const simpleTeamSide = isPlainTeamSide(title);
+          const headToHeadPrompt = /\bwill\b.+\b(beat|defeat|win against|wins against|outscore)\b.+/.test(titleText);
           const tickerSignal = /(?:^|[-_])ml(?:$|[-_])/i.test(ticker);
-          return (matchContext && (winnerSignal || simpleTeamSide)) || tickerSignal;
+          return (matchContext && (winnerSignal || simpleTeamSide)) || headToHeadPrompt || tickerSignal;
         };
         const isLeagueOutcomeContract = (event: string, title: string, ticker: string): boolean => {
           const text = (event + ' ' + title).toLowerCase();

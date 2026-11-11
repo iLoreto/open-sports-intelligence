@@ -146,6 +146,13 @@ test('market scan returns non-empty moneyline results and honors league filter',
 		status: 'open',
 		yes_ask_dollars: '0.83',
 		no_ask_dollars: '0.21'
+	  }, {
+		ticker: 'KXNBA-BOS-PHI-H2H',
+		event_ticker: 'KX_UNKNOWN_NBA',
+		title: 'Will Boston beat Philadelphia?',
+		status: 'open',
+		yes_ask_dollars: '0.61',
+		no_ask_dollars: '0.39'
 	  }], cursor: '' });
 	}
 
@@ -157,12 +164,14 @@ test('market scan returns non-empty moneyline results and honors league filter',
 	assert.equal(nbaResponse.status, 200);
 	const nbaBody = await nbaResponse.json() as any;
 	assert.ok(Array.isArray(nbaBody.markets));
-	assert.equal(nbaBody.markets.length, 4);
+	assert.equal(nbaBody.markets.length, 6);
 	assert.deepEqual(nbaBody.markets.map((market: any) => [market.ticker, market.side, market.askCents]), [
+	  ['KXNBA-BOS-PHI-H2H', 'NO', 39],
 	  ['NBA-1-ML', 'NO', 42],
 	  ['NBA-BOS-PHI-ML', 'NO', 46],
 	  ['NBA-BOS-PHI-ML', 'YES', 54],
-	  ['NBA-1-ML', 'YES', 58]
+	  ['NBA-1-ML', 'YES', 58],
+	  ['KXNBA-BOS-PHI-H2H', 'YES', 61]
 	]);
 
 	const nflResponse = await worker.fetch(request('/api/markets/scan?provider=kalshi&league=nfl&min=1&max=99', 'POST'), { ASSETS: assets });
