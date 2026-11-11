@@ -35,3 +35,13 @@
 - **P3:** Source and validate granular tennis points/serve data, basketball player minutes, hockey shot quality and soccer xG. If no sustainable free feed exists, show unavailable rather than invent data.
 
 **Developer note:** Read `README.md` and `docs/live-sports-radar-methodology.md` (PR #42) for product constraints and proposed indicators. All implementation changes require separate PR review.
+
+## Proposed blowout and rotation risk research
+
+The analyst reports near-miss 25+ scoring props involving Jalen Brunson and Devin Booker when their teams had comfortable leads against weaker opponents. Treat these as unverified case observations, **not** evidence of deliberate coach manipulation or proof of a population-level effect.
+
+**Project recommendation policy:** Do not recommend 25+ NBA player-point props, irrespective of star or matchup. This is a conservative decision rule, not a statistical claim that such props cannot win.
+
+**Future radar warning:** Compare pregame team-strength gap, live score differential, time remaining, coach rotation history, current minutes, foul trouble, injury/minutes limits, and estimated likelihood of fourth-quarter participation. A blowout-risk flag must be labeled heuristic until tested.
+
+**Validation plan:** Analyze play-by-play substitutions and final point totals for high-usage players across close and lopsided games. Test 23/24-point outcomes against neighboring totals with appropriate baselines, and publish sample sizes and uncertainty. No accusation of intentional market manipulation without independent evidence.
