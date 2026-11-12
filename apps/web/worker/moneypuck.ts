@@ -59,7 +59,8 @@ export async function moneyPuckComparison(left: string, right: string, season: n
   const csv = await response.text();
   if (csv.length > 5_000_000) throw new Error('MoneyPuck CSV too large');
   const teams = parseMoneyPuckTeams(csv);
-  const a = teams.get(left), b = teams.get(right);
+  const aliases: Record<string,string> = { LA:'LAK', SJ:'SJS', TB:'TBL', UT:'UTA', UTAH:'UTA', VGK:'VGK', LV:'VGK', NJ:'NJD', NYI:'NYI', NYR:'NYR' };
+  const a = teams.get(aliases[left] || left), b = teams.get(aliases[right] || right);
   if (!a || !b) throw new Error('Team missing from MoneyPuck season summary');
   return { source: 'MoneyPuck season summary (5-on-5)', fetchedAt: new Date().toISOString(), season,
     situation: '5on5', left: a, right: b,
