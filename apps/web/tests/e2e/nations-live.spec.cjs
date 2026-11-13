@@ -23,6 +23,8 @@ test('shows live fixture, statistics, insight and one shared parlay',async ({pag
  await expect(fixtures).toContainText('Gibraltar');
  await expect(fixtures).toContainText('Andorra');
  await expect(fixtures).toContainText('Possession');
+ await expect(fixtures).toContainText('GAME READ');
+ await expect(fixtures).toContainText('Possession: Gibraltar 40% / Andorra 60%');
  await expect(fixtures).toContainText('MATCH STATISTICS');
  await expect(fixtures.locator('.statline').filter({hasText:'Possession'})).toHaveCount(1);
  await expect(fixtures.locator('.statline').filter({hasText:'Shots on target'})).toHaveCount(1);
