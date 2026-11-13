@@ -10,7 +10,8 @@
     "preview": "npm run build && wrangler dev",
     "deploy": "npm run build && wrangler deploy",
     "test:cache": "node --experimental-strip-types --test worker/scan-cache.test.ts",
-    "test:nba-api": "node --experimental-strip-types --test worker/nba-api.test.ts"
+    "test:nba-api": "node --experimental-strip-types --test worker/nba-api.test.ts",
+    "test:nhl-xg": "node --experimental-strip-types --test worker/moneypuck.test.ts"
   },
   "dependencies": {
     "@angular/common": "^22.0.0",

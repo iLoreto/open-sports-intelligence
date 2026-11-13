@@ -5,6 +5,8 @@ type Sport = 'nba' | 'nfl' | 'nhl' | 'mlb' | 'wnba' | 'ncaaf' | 'ncaam' | 'tenni
 type ScanLeague = Exclude<Sport, 'tennis'>;
 interface Team { id: number | string; full_name: string; abbreviation?: string }
 interface Stats { games: number; wins: number; losses: number; ties?: number; pointsFor: number | null; pointsAgainst: number | null; recent: { date: string; scored: number; allowed: number; win: boolean }[] }
+interface NhlXgTeam { abbreviation: string; games: number; xgShare: number; xgf60: number; xga60: number; xgd60: number; highDangerFor: number; highDangerAgainst: number }
+interface NhlXgComparison { source: string; fetchedAt: string; season: number; left: NhlXgTeam; right: NhlXgTeam; note: string; attribution: string }
 interface Market { ticker: string; event: string; title: string; side: 'YES' | 'NO'; askCents: number; yesBid: string | null; yesAsk: string | null; noAsk: string | null; last: string | null; volume24h: string | null }
 interface ScanResult { source: string; scannedAt: string; markets: Market[]; partialCoverage: boolean; note: string; pagesScanned: number; sportsEvents: number }
 interface Comparison { source: string; fetchedAt: string; sample: number; left: Stats; right: Stats; partial: boolean; note: string; h2h?: { games: number; leftWins: number; rightWins: number; ties: number; meetings: { date: string; leftScore: number; rightScore: number }[] }; metricProfile?: { unit: string; available: string[]; unavailable: string[] } }
@@ -25,7 +27,7 @@ interface Comparison { source: string; fetchedAt: string; sample: number; left: 
       </div>
       <label>Completed games to compare<select [value]="sample()" (change)="sample.set(+$any($event.target).value)"><option [value]="5">Last 5</option><option [value]="10">Last 10</option><option [value]="20">Last 20</option></select></label>
       <button class="run" [disabled]="loading() || !left() || !right() || left() === right()" (click)="run()">{{ loading() ? 'Loading…' : 'Run comparison →' }}</button>
-      <p *ngIf="teamLoading()" class="hint">Loading {{ sport().toUpperCase() }} teams…</p><p class="hint">Scores and team-level form only. Player, injury, and advanced matchup analyses will be enabled when their data integrations are implemented.</p>
+      <p *ngIf="teamLoading()" class="hint">Loading {{ sport().toUpperCase() }} teams…</p><p class="hint">Historical results from ESPN; NHL also includes season-to-date five-on-five xG from MoneyPuck. Injury, goalie, and market information are not included.</p>
     </section>
     <section class="panel" *ngIf="sport() === 'tennis'"><div class="eyebrow">TENNIS / ATP · WTA · CHALLENGER</div><h2>Tennis research</h2><p>The tennis provider is not yet configured. Player comparison controls will be enabled after verifying tournament coverage and historical statistics.</p></section>
     <section class="panel" *ngIf="sport() !== 'tennis'" aria-live="polite"><h2>Results</h2>
@@ -35,7 +37,17 @@ interface Comparison { source: string; fetchedAt: string; sample: number; left: 
         <div class="columns">
           <div class="stats"><h3>{{ teamName(left()) }}</h3><p>{{ c.left.wins }}W–{{ c.left.losses }}L<span *ngIf="c.left.ties">–{{ c.left.ties }}T</span> ({{ c.left.games }} games)</p><p>{{ c.metricProfile?.unit || 'Points' }} scored: {{ c.left.pointsFor ?? '—' }} / game</p><p>{{ c.metricProfile?.unit || 'Points' }} allowed: {{ c.left.pointsAgainst ?? '—' }} / game</p><p *ngFor="let g of c.left.recent">{{ g.date | date:'shortDate' }} · {{ g.scored }}–{{ g.allowed }} · {{ g.win ? 'W' : 'L' }}</p></div>
           <div class="stats"><h3>{{ teamName(right()) }}</h3><p>{{ c.right.wins }}W–{{ c.right.losses }}L<span *ngIf="c.right.ties">–{{ c.right.ties }}T</span> ({{ c.right.games }} games)</p><p>{{ c.metricProfile?.unit || 'Points' }} scored: {{ c.right.pointsFor ?? '—' }} / game</p><p>{{ c.metricProfile?.unit || 'Points' }} allowed: {{ c.right.pointsAgainst ?? '—' }} / game</p><p *ngFor="let g of c.right.recent">{{ g.date | date:'shortDate' }} · {{ g.scored }}–{{ g.allowed }} · {{ g.win ? 'W' : 'L' }}</p></div>
-        </div><div class="stats" *ngIf="c.h2h as h"><h3>Direct head-to-head</h3><p>{{ h.games }} verified meetings in retrieved history · {{ teamName(left()) }}: {{ h.leftWins }} wins · {{ teamName(right()) }}: {{ h.rightWins }} wins · {{ h.ties }} ties</p><p *ngFor="let g of h.meetings">{{ g.date | date:'shortDate' }} · {{ g.leftScore }}–{{ g.rightScore }}</p><p *ngIf="!h.games">No direct meetings found in the retrieved window.</p></div><p class="hint" *ngIf="c.metricProfile">Advanced {{ sport().toUpperCase() }} metrics not yet available: {{ c.metricProfile.unavailable.join(', ') }}.</p><p class="hint">{{ c.note }} <strong *ngIf="c.partial">Provider pagination indicates incomplete coverage.</strong></p>
+        </div>
+        <div class="stats" *ngIf="sport() === 'nhl' && nhlXg() as xg">
+          <h3>Five-on-five expected goals · MoneyPuck</h3>
+          <p class="meta">{{ xg.attribution }} · {{ xg.fetchedAt | date:'medium' }} · {{ xg.season }}–{{ xg.season + 1 }} season</p>
+          <div class="columns">
+            <div><strong>{{ teamName(left()) }}</strong><p>xG share: {{ xg.left.xgShare * 100 | number:'1.1-1' }}%</p><p>xGF/60: {{ xg.left.xgf60 | number:'1.2-2' }} · xGA/60: {{ xg.left.xga60 | number:'1.2-2' }}</p><p>xG differential/60: {{ xg.left.xgd60 | number:'1.2-2' }}</p><p>High-danger shots: {{ xg.left.highDangerFor }} for / {{ xg.left.highDangerAgainst }} against</p></div>
+            <div><strong>{{ teamName(right()) }}</strong><p>xG share: {{ xg.right.xgShare * 100 | number:'1.1-1' }}%</p><p>xGF/60: {{ xg.right.xgf60 | number:'1.2-2' }} · xGA/60: {{ xg.right.xga60 | number:'1.2-2' }}</p><p>xG differential/60: {{ xg.right.xgd60 | number:'1.2-2' }}</p><p>High-danger shots: {{ xg.right.highDangerFor }} for / {{ xg.right.highDangerAgainst }} against</p></div>
+          </div><p class="hint">{{ xg.note }}</p>
+        </div>
+        <p *ngIf="sport() === 'nhl' && nhlXgError()" class="error">MoneyPuck xG unavailable: {{ nhlXgError() }}</p>
+        <div class="stats" *ngIf="c.h2h as h"><h3>Direct head-to-head</h3><p>{{ h.games }} verified meetings in retrieved history · {{ teamName(left()) }}: {{ h.leftWins }} wins · {{ teamName(right()) }}: {{ h.rightWins }} wins · {{ h.ties }} ties</p><p *ngFor="let g of h.meetings">{{ g.date | date:'shortDate' }} · {{ g.leftScore }}–{{ g.rightScore }}</p><p *ngIf="!h.games">No direct meetings found in the retrieved window.</p></div><p class="hint" *ngIf="c.metricProfile">Advanced {{ sport().toUpperCase() }} metrics not yet available: {{ c.metricProfile.unavailable.join(', ') }}.</p><p class="hint">{{ c.note }} <strong *ngIf="c.partial">Provider pagination indicates incomplete coverage.</strong></p>
       </ng-container>
     </section></ng-container>
     <section class="panel" *ngIf="tab() === 'markets'"><div class="eyebrow">MANUAL MARKET RESEARCH</div><h2>Market Scanner</h2><p>Select a provider and ask range, then press Scan to retrieve a new market snapshot for the selected league. No scheduled scans or automatic refresh.</p>
@@ -122,12 +134,13 @@ export class AppComponent {
   readonly teamLoading = signal(false);
   readonly teams = signal<Team[]>([]);
   readonly left = signal<string | number>(0); readonly right = signal<string | number>(0); readonly sample = signal(10);
+  readonly nhlXg = signal<NhlXgComparison | null>(null); readonly nhlXgError = signal('');
   readonly loading = signal(false); readonly comparison = signal<Comparison | null>(null); readonly error = signal('');
   private requestId = 0;
   constructor() { void this.loadTeams(); }
   teamName(id: number | string): string { return this.teams().find(t => String(t.id) === String(id))?.full_name ?? 'Team'; }
   chooseSport(value: Sport): void {
-    this.requestId++; this.sport.set(value); this.teams.set([]); this.left.set(0); this.right.set(0); this.loading.set(false); this.comparison.set(null); this.error.set(''); if (value !== 'tennis') { this.scanLeague.set(value); void this.loadTeams(); }
+    this.requestId++; this.sport.set(value); this.teams.set([]); this.left.set(0); this.right.set(0); this.loading.set(false); this.comparison.set(null); this.nhlXg.set(null); this.nhlXgError.set(''); this.error.set(''); if (value !== 'tennis') { this.scanLeague.set(value); void this.loadTeams(); }
   }
   async loadTeams(): Promise<void> {
     const selected = this.sport(); if (selected === 'tennis') return; const requestId = this.requestId; this.teamLoading.set(true);
@@ -142,13 +155,26 @@ export class AppComponent {
   async run(): Promise<void> {
     if (this.sport() === 'tennis' || !this.left() || !this.right() || String(this.left()) === String(this.right())) return;
     const id = ++this.requestId, a = this.left(), b = this.right(), n = this.sample();
-    this.loading.set(true); this.error.set(''); this.comparison.set(null);
+    this.loading.set(true); this.error.set(''); this.comparison.set(null); this.nhlXg.set(null); this.nhlXgError.set('');
     try {
       const endpoint = this.sport() === 'nba' ? '/api/nba/compare' : '/api/leagues/' + this.sport() + '/compare';
       const response = await fetch(endpoint + '?left=' + encodeURIComponent(a) + '&right=' + encodeURIComponent(b) + '&sample=' + n, { cache: 'no-store' });
       const body = await response.json() as Comparison & { message?: string; error?: string };
       if (!response.ok) throw new Error(body.message || body.error || 'Comparison unavailable');
       if (id === this.requestId) this.comparison.set(body);
+      if (this.sport() === 'nhl' && id === this.requestId) {
+        const leftTeam = this.teams().find(t => String(t.id) === String(a));
+        const rightTeam = this.teams().find(t => String(t.id) === String(b));
+        if (!leftTeam?.abbreviation || !rightTeam?.abbreviation) this.nhlXgError.set('NHL team abbreviations missing from ESPN directory.');
+        else {
+          try {
+            const xgResponse = await fetch('/api/nhl/xg-comparison?left=' + encodeURIComponent(leftTeam.abbreviation) + '&right=' + encodeURIComponent(rightTeam.abbreviation), { cache: 'no-store' });
+            const xgBody = await xgResponse.json() as NhlXgComparison & { error?: string };
+            if (!xgResponse.ok) throw new Error(xgBody.error || 'MoneyPuck unavailable');
+            if (id === this.requestId) this.nhlXg.set(xgBody);
+          } catch (e) { if (id === this.requestId) this.nhlXgError.set(e instanceof Error ? e.message : 'MoneyPuck unavailable'); }
+        }
+      }
     } catch(e) { if (id === this.requestId) this.error.set(e instanceof Error ? e.message : 'Unable to compare teams'); }
     finally { if (id === this.requestId) this.loading.set(false); }
   }

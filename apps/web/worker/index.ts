@@ -1,3 +1,4 @@
+import { moneyPuckComparison } from './moneypuck.ts';
 import { sharedScan, uncachedScan, type ScanSnapshot, type ScanDatabase } from './scan-cache.ts';
 interface Environment { ASSETS: { fetch(request: Request): Promise<Response> }; DB?: ScanDatabase }
 type Team = { id: number; full_name: string };
@@ -77,6 +78,18 @@ export default {
   async fetch(request: Request, env: Environment): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === '/api/health') return json({ status: 'ok', activeSports: ['nba', 'tennis'], backgroundScanning: false });
+    if (url.pathname === '/api/nhl/xg-comparison') {
+      if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
+      const left = (url.searchParams.get('left') || '').toUpperCase();
+      const right = (url.searchParams.get('right') || '').toUpperCase();
+      // NHL season identifiers use the calendar year in which the season starts.
+      const now = new Date();
+      const season = now.getUTCFullYear() - (now.getUTCMonth() < 8 ? 1 : 0);
+      if (!/^[A-Z]{2,4}$/.test(left) || !/^[A-Z]{2,4}$/.test(right) || left === right)
+        return json({ error: 'Select two different NHL team abbreviations.' }, 400);
+      try { return json(await moneyPuckComparison(left, right, season)); }
+      catch (e) { return json({ error: e instanceof Error ? e.message : 'MoneyPuck unavailable' }, 502); }
+    }
     if (url.pathname === '/api/tennis/status') return json({ message: 'Tennis data provider not configured. Challenger and ITF coverage must be verified.', configured: false }, 503);
 
     if (url.pathname === '/api/markets/scan') {
