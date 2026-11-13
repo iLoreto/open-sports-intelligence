@@ -115,6 +115,9 @@ test('Scotland single has trash icon and removal changes totals without removing
  await button.click();
  await expect(page.getByRole('region',{name:'Ticket overview'})).toContainText('$268.53');
  await expect(page.getByRole('article',{name:'3-leg parlay ticket'})).toBeVisible();
+ await expect(page.locator('.match')).toHaveCount(1);
+ await expect(page.getByRole('region',{name:'ESPN Nations League fixtures'})).not.toContainText('North Macedonia');
  await page.reload();
  await expect(button).toHaveCount(0);
+ await expect(page.locator('.match')).toHaveCount(1);
 });
