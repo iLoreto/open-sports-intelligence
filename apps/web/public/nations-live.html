@@ -91,7 +91,7 @@ function render(){
  const root=byId('matches');root.replaceChildren();
  const filter=byId('filter').value;
  const selected=events.filter(e=>(confirmedTickets[ticketKey(e.home,e.away)]&&!isRemoved(ticketKey(e.home,e.away))||!isRemoved('parlay')&&parlay.legs.some(t=>normalize(e.home)===normalize(t)||normalize(e.away)===normalize(t)))&&(filter==='all'||String(e.status).toLowerCase()===filter));
- if(!selected.length){root.append(node('p','empty','No ticketed fixtures available from ESPN for this date/filter. Ticket summary remains available above.'));return}
+ if(!selected.length&&filter!=='all'){root.append(node('p','empty','No ticketed fixtures available from ESPN for this date/filter.'));return}
  for(const e of selected){
   const card=node('article','match'),head=node('div','head'),live=e.status==='Live';
   head.append(node('span','muted',e.date?new Date(e.date).toLocaleString():'Nations League'),node('span','state '+(live?'live':e.status==='Final'?'final':''),e.status+(live&&e.minute!==null?' · '+e.minute+' min':'')));card.append(head);
