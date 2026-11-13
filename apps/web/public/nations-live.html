@@ -31,13 +31,13 @@ function metric(root,label,a,b,bar=false){const wrap=node('div','stat'),line=nod
 const num=v=>v===null||v===undefined||v===''?null:Number.parseFloat(String(v).replace('%',''));
 function matchInsight(e){
  const h=e.stats?.home||{},a=e.stats?.away||{};
- const pos=[num(h.possession),num(a.possession)],shots=[num(h.shots),num(a.shots)],target=[num(h.shotsOnTarget),num(a.shotsOnTarget)];
+ const fields=[['Possession','possession','%'],['Shots','shots',''],['Shots on target','shotsOnTarget',''],['Expected goals (xG)','xg',''],['Corners','corners',''],['Fouls','fouls',''],['Yellow cards','yellowCards',''],['Red cards','redCards','']];
  const lines=[];
- if(pos.every(Number.isFinite)){const leader=pos[0]>pos[1]?e.home:e.away;lines.push(leader+' controls '+Math.max(...pos).toFixed(1)+'% of possession');}
- if(shots.every(Number.isFinite)){const leader=shots[0]>shots[1]?e.home:e.away;lines.push(shots[0]===shots[1]?'Shots are even':leader+' leads shots '+Math.max(...shots)+'–'+Math.min(...shots));}
- if(target.every(Number.isFinite))lines.push('On-target attempts: '+target[0]+'–'+target[1]);
- const xg=[num(h.xg),num(a.xg)];if(xg.every(Number.isFinite))lines.push('Chance quality (xG): '+xg[0]+'–'+xg[1]);
- return lines.length?lines.join(' · ')+'. Possession alone does not prove better chances.':'ESPN has not supplied enough live statistics to assess match control.';
+ for(const [label,key,suffix] of fields){
+  const home=num(h[key]),away=num(a[key]);
+  if(Number.isFinite(home)&&Number.isFinite(away))lines.push(label+': '+e.home+' '+home+suffix+' / '+e.away+' '+away+suffix);
+ }
+ return lines.length?lines.join(' · '):'No comparative match statistics provided by ESPN.';
 }
 function chart(root,e){
  const keys=[['Possession','possession'],['Shots','shots'],['Shots on target','shotsOnTarget'],['xG','xg'],['Corners','corners'],['Pass accuracy','passAccuracy']];
@@ -73,7 +73,7 @@ function render(){
    if(key==='possession'||a!==null||b!==null)metric(stats,label,a,b,key==='possession');
   }
   card.append(stats);
-  const insight=node('div','insight');insight.append(node('strong','','MATCH READ · '),document.createTextNode(matchInsight(e)));card.append(insight);
+  const insight=node('div','insight');insight.append(node('strong','','MATCH FACTS · '),document.createTextNode(matchInsight(e)));card.append(insight);
   const comparison=node('div','stats');chart(comparison,e);card.append(comparison);
   const info=confirmedTickets[ticketKey(e.home,e.away)];
   const small=node('div','muted',info?'Single ticket · Stake '+money(info.stake)+' · Potential payout '+money(info.payout)+' · Potential profit '+money(info.payout-info.stake):'Ticket · Payout not verified');
