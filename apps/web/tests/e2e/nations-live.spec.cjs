@@ -23,7 +23,10 @@ test('shows live fixture, statistics, insight and one shared parlay',async ({pag
  await expect(fixtures).toContainText('Gibraltar');
  await expect(fixtures).toContainText('Andorra');
  await expect(fixtures).toContainText('Possession');
- await expect(fixtures).toContainText('MATCH READ');
+ await expect(fixtures).toContainText('MATCH FACTS');
+ await expect(fixtures).toContainText('Possession: Gibraltar 40% / Andorra 60%');
+ await expect(fixtures).not.toContainText('controls');
+ await expect(fixtures).not.toContainText('better chances');
  await expect(fixtures).toContainText('Stake $24.60');
 });
 test('filter leaves financial summary visible',async ({page})=>{
