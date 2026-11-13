@@ -47,31 +47,53 @@ function chart(root,e){
  for(const x of available){const wrap=node('div','stat'),line=node('div','statline');line.append(node('strong','',x.left),node('span','statname',x.label),node('strong','',x.right));wrap.append(line);
  const bar=node('div','bar'),left=node('span'),right=node('i');const total=x.left+x.right;left.style.width=(total>0?100*x.left/total:50)+'%';bar.append(left,right);wrap.append(bar);root.append(wrap);}
 }
-function renderOverview(){const el=byId('overview');el.replaceChildren();const singles=Object.values(confirmedTickets),stake=singles.reduce((n,t)=>n+t.stake,0)+parlay.stake,payout=singles.reduce((n,t)=>n+t.payout,0)+parlay.payout;
- el.append(node('strong','','9 verified tickets · const root=byId('matches');root.replaceChildren();const selected=events.filter(e=>findTicket(e)&&(byId('filter').value==='all'||e.status.toLowerCase()===byId('filter').value));if(!selected.length){root.append(node('p','empty','No ticketed fixtures available from ESPN for this date/filter.'));return}
-for(const e of selected){const card=node('article','match'),head=node('div','head'),live=e.status==='Live';head.append(node('span','muted',e.date?new Date(e.date).toLocaleString():'Nations League'),node('span','state '+(live?'live':e.status==='Final'?'final':''),e.status+(live&&e.minute!==null?' · '+e.minute+' min':'')));card.append(head);const teams=node('div','teams'),names=node('div','names'),scores=node('div','score');names.append(node('div','',e.home),node('div','',e.away));scores.append(node('div','',e.homeScore??'—'),node('div','',e.awayScore??'—'));teams.append(names,scores);card.append(teams);const stats=node('div','stats');for(const [label,key] of [['Possession','possession'],['Shots','shots'],['Shots on target','shotsOnTarget'],['Expected goals (xG)','xg'],['Shots inside box','shotsInsideBox'],['Pass accuracy','passAccuracy'],['Corners','corners'],['Fouls','fouls'],['Yellow cards','yellowCards'],['Red cards','redCards'],['Tackles','tackles'],['Goalkeeper saves','saves']]){const a=e.stats?.home?.[key]??null,b=e.stats?.away?.[key]??null;if(key==='possession'||a!==null||b!==null)metric(stats,label,a,b,key==='possession')}card.append(stats);const insight=node('div','insight');insight.append(node('strong','','MATCH READ · '),document.createTextNode(matchInsight(e)));card.append(insight);const comparison=node('div','stats');chart(comparison,e);card.append(comparison);const info=confirmedTickets[ticketKey(e.home,e.away)];
-const small=node('div','muted',info?info.label+' · Stake '+money(info.stake)+' · Potential payout '+money(info.payout)+' · Potential profit '+money(info.payout-info.stake):'Ticket · Payout not verified');
-small.style.fontSize='11px';small.style.marginTop='12px';card.append(small);if(['Scotland','Germany','Slovakia'].some(t=>normalize(e.home)===normalize(t)||normalize(e.away)===normalize(t))){const p=node('div','ticket','Also in 3-leg parlay · Scotland / Germany / Slovakia · Shared stake $75.00 · Shared payout $155.01 (counted once)');card.append(p)}root.append(card)}}
-async function refresh(){if(loading)return;loading=true;byId('refresh').disabled=true;try{const res=await fetch('/api/nations/scoreboard',{cache:'no-store'});if(!res.ok)throw Error('HTTP '+res.status);const data=await res.json();if(!Array.isArray(data.events))throw Error('Invalid ESPN response');events=data.events;render();byId('status').textContent='ESPN checked '+new Date(data.fetchedAt).toLocaleTimeString()+' · '+events.length+' fixtures';}catch(error){byId('status').textContent='ESPN unavailable: '+error.message;render()}finally{loading=false;byId('refresh').disabled=false}}
-renderOverview();byId('filter').addEventListener('change',render);byId('refresh').addEventListener('click',refresh);setInterval(()=>{if(!document.hidden)refresh()},60000);refresh();
-</script></body></html>+stake.toFixed(2)+' stake · const root=byId('matches');root.replaceChildren();const selected=events.filter(e=>findTicket(e)&&(byId('filter').value==='all'||e.status.toLowerCase()===byId('filter').value));if(!selected.length){root.append(node('p','empty','No ticketed fixtures available from ESPN for this date/filter.'));return}
-for(const e of selected){const card=node('article','match'),head=node('div','head'),live=e.status==='Live';head.append(node('span','muted',e.date?new Date(e.date).toLocaleString():'Nations League'),node('span','state '+(live?'live':e.status==='Final'?'final':''),e.status+(live&&e.minute!==null?' · '+e.minute+' min':'')));card.append(head);const teams=node('div','teams'),names=node('div','names'),scores=node('div','score');names.append(node('div','',e.home),node('div','',e.away));scores.append(node('div','',e.homeScore??'—'),node('div','',e.awayScore??'—'));teams.append(names,scores);card.append(teams);const stats=node('div','stats');for(const [label,key] of [['Possession','possession'],['Shots','shots'],['Shots on target','shotsOnTarget'],['Expected goals (xG)','xg'],['Shots inside box','shotsInsideBox'],['Pass accuracy','passAccuracy'],['Corners','corners'],['Fouls','fouls'],['Yellow cards','yellowCards'],['Red cards','redCards'],['Tackles','tackles'],['Goalkeeper saves','saves']]){const a=e.stats?.home?.[key]??null,b=e.stats?.away?.[key]??null;if(key==='possession'||a!==null||b!==null)metric(stats,label,a,b,key==='possession')}card.append(stats);const info=confirmedTickets[ticketKey(e.home,e.away)];
-const small=node('div','muted',info?info.label+' · Stake '+money(info.stake)+' · Potential payout '+money(info.payout)+' · Potential profit '+money(info.payout-info.stake):'Ticket · Payout not verified');
-small.style.fontSize='11px';small.style.marginTop='12px';card.append(small);root.append(card)}}
-async function refresh(){if(loading)return;loading=true;byId('refresh').disabled=true;try{const res=await fetch('/api/nations/scoreboard',{cache:'no-store'});if(!res.ok)throw Error('HTTP '+res.status);const data=await res.json();if(!Array.isArray(data.events))throw Error('Invalid ESPN response');events=data.events;render();byId('status').textContent='ESPN checked '+new Date(data.fetchedAt).toLocaleTimeString()+' · '+events.length+' fixtures';}catch(error){byId('status').textContent='ESPN unavailable: '+error.message;render()}finally{loading=false;byId('refresh').disabled=false}}
-byId('filter').addEventListener('change',render);byId('refresh').addEventListener('click',refresh);setInterval(()=>{if(!document.hidden)refresh()},60000);refresh();
-</script></body></html>+payout.toFixed(2)+' potential payout'),node('div','muted','8 singles + 1 three-leg parlay · Potential profit const root=byId('matches');root.replaceChildren();const selected=events.filter(e=>findTicket(e)&&(byId('filter').value==='all'||e.status.toLowerCase()===byId('filter').value));if(!selected.length){root.append(node('p','empty','No ticketed fixtures available from ESPN for this date/filter.'));return}
-for(const e of selected){const card=node('article','match'),head=node('div','head'),live=e.status==='Live';head.append(node('span','muted',e.date?new Date(e.date).toLocaleString():'Nations League'),node('span','state '+(live?'live':e.status==='Final'?'final':''),e.status+(live&&e.minute!==null?' · '+e.minute+' min':'')));card.append(head);const teams=node('div','teams'),names=node('div','names'),scores=node('div','score');names.append(node('div','',e.home),node('div','',e.away));scores.append(node('div','',e.homeScore??'—'),node('div','',e.awayScore??'—'));teams.append(names,scores);card.append(teams);const stats=node('div','stats');for(const [label,key] of [['Possession','possession'],['Shots','shots'],['Shots on target','shotsOnTarget'],['Expected goals (xG)','xg'],['Shots inside box','shotsInsideBox'],['Pass accuracy','passAccuracy'],['Corners','corners'],['Fouls','fouls'],['Yellow cards','yellowCards'],['Red cards','redCards'],['Tackles','tackles'],['Goalkeeper saves','saves']]){const a=e.stats?.home?.[key]??null,b=e.stats?.away?.[key]??null;if(key==='possession'||a!==null||b!==null)metric(stats,label,a,b,key==='possession')}card.append(stats);const info=confirmedTickets[ticketKey(e.home,e.away)];
-const small=node('div','muted',info?info.label+' · Stake '+money(info.stake)+' · Potential payout '+money(info.payout)+' · Potential profit '+money(info.payout-info.stake):'Ticket · Payout not verified');
-small.style.fontSize='11px';small.style.marginTop='12px';card.append(small);root.append(card)}}
-async function refresh(){if(loading)return;loading=true;byId('refresh').disabled=true;try{const res=await fetch('/api/nations/scoreboard',{cache:'no-store'});if(!res.ok)throw Error('HTTP '+res.status);const data=await res.json();if(!Array.isArray(data.events))throw Error('Invalid ESPN response');events=data.events;render();byId('status').textContent='ESPN checked '+new Date(data.fetchedAt).toLocaleTimeString()+' · '+events.length+' fixtures';}catch(error){byId('status').textContent='ESPN unavailable: '+error.message;render()}finally{loading=false;byId('refresh').disabled=false}}
-byId('filter').addEventListener('change',render);byId('refresh').addEventListener('click',refresh);setInterval(()=>{if(!document.hidden)refresh()},60000);refresh();
-</script></body></html>+(payout-stake).toFixed(2)+' if all win. Values from Novig screenshots; not live cash-out prices.'));
+function renderOverview(){
+ const singles=Object.values(confirmedTickets);
+ const stake=singles.reduce((n,t)=>n+t.stake,0)+parlay.stake;
+ const payout=singles.reduce((n,t)=>n+t.payout,0)+parlay.payout;
+ const el=byId('overview');el.replaceChildren();
+ el.append(node('strong','','8 singles + 1 parlay · 9 tickets'));
+ el.append(node('div','','Total stakes '+money(stake)+' · Potential payout '+money(payout)+' · Potential profit '+money(payout-stake)));
+ el.append(node('div','muted','Potential results only if all tickets win. Ticket amounts are based on Novig receipts; no Open Positions valuation.'));
 }
-function render(){const root=byId('matches');root.replaceChildren();const selected=events.filter(e=>findTicket(e)&&(byId('filter').value==='all'||e.status.toLowerCase()===byId('filter').value));if(!selected.length){root.append(node('p','empty','No ticketed fixtures available from ESPN for this date/filter.'));return}
-for(const e of selected){const card=node('article','match'),head=node('div','head'),live=e.status==='Live';head.append(node('span','muted',e.date?new Date(e.date).toLocaleString():'Nations League'),node('span','state '+(live?'live':e.status==='Final'?'final':''),e.status+(live&&e.minute!==null?' · '+e.minute+' min':'')));card.append(head);const teams=node('div','teams'),names=node('div','names'),scores=node('div','score');names.append(node('div','',e.home),node('div','',e.away));scores.append(node('div','',e.homeScore??'—'),node('div','',e.awayScore??'—'));teams.append(names,scores);card.append(teams);const stats=node('div','stats');for(const [label,key] of [['Possession','possession'],['Shots','shots'],['Shots on target','shotsOnTarget'],['Expected goals (xG)','xg'],['Shots inside box','shotsInsideBox'],['Pass accuracy','passAccuracy'],['Corners','corners'],['Fouls','fouls'],['Yellow cards','yellowCards'],['Red cards','redCards'],['Tackles','tackles'],['Goalkeeper saves','saves']]){const a=e.stats?.home?.[key]??null,b=e.stats?.away?.[key]??null;if(key==='possession'||a!==null||b!==null)metric(stats,label,a,b,key==='possession')}card.append(stats);const info=confirmedTickets[ticketKey(e.home,e.away)];
-const small=node('div','muted',info?info.label+' · Stake '+money(info.stake)+' · Potential payout '+money(info.payout)+' · Potential profit '+money(info.payout-info.stake):'Ticket · Payout not verified');
-small.style.fontSize='11px';small.style.marginTop='12px';card.append(small);root.append(card)}}
-async function refresh(){if(loading)return;loading=true;byId('refresh').disabled=true;try{const res=await fetch('/api/nations/scoreboard',{cache:'no-store'});if(!res.ok)throw Error('HTTP '+res.status);const data=await res.json();if(!Array.isArray(data.events))throw Error('Invalid ESPN response');events=data.events;render();byId('status').textContent='ESPN checked '+new Date(data.fetchedAt).toLocaleTimeString()+' · '+events.length+' fixtures';}catch(error){byId('status').textContent='ESPN unavailable: '+error.message;render()}finally{loading=false;byId('refresh').disabled=false}}
-byId('filter').addEventListener('change',render);byId('refresh').addEventListener('click',refresh);setInterval(()=>{if(!document.hidden)refresh()},60000);refresh();
+function render(){
+ renderOverview();
+ const root=byId('matches');root.replaceChildren();
+ const filter=byId('filter').value;
+ const selected=events.filter(e=>findTicket(e)&&(filter==='all'||String(e.status).toLowerCase()===filter));
+ if(!selected.length){root.append(node('p','empty','No ticketed fixtures available from ESPN for this date/filter. Ticket summary remains available above.'));return}
+ for(const e of selected){
+  const card=node('article','match'),head=node('div','head'),live=e.status==='Live';
+  head.append(node('span','muted',e.date?new Date(e.date).toLocaleString():'Nations League'),node('span','state '+(live?'live':e.status==='Final'?'final':''),e.status+(live&&e.minute!==null?' · '+e.minute+' min':'')));card.append(head);
+  const teams=node('div','teams'),names=node('div','names'),scores=node('div','score');
+  names.append(node('div','',e.home),node('div','',e.away));scores.append(node('div','',e.homeScore??'—'),node('div','',e.awayScore??'—'));teams.append(names,scores);card.append(teams);
+  const stats=node('div','stats');
+  for(const [label,key] of [['Possession','possession'],['Shots','shots'],['Shots on target','shotsOnTarget'],['Expected goals (xG)','xg'],['Shots inside box','shotsInsideBox'],['Pass accuracy','passAccuracy'],['Corners','corners'],['Fouls','fouls'],['Yellow cards','yellowCards'],['Red cards','redCards'],['Tackles','tackles'],['Goalkeeper saves','saves']]){
+   const a=e.stats?.home?.[key]??null,b=e.stats?.away?.[key]??null;
+   if(key==='possession'||a!==null||b!==null)metric(stats,label,a,b,key==='possession');
+  }
+  card.append(stats);
+  const insight=node('div','insight');insight.append(node('strong','','MATCH READ · '),document.createTextNode(matchInsight(e)));card.append(insight);
+  const comparison=node('div','stats');chart(comparison,e);card.append(comparison);
+  const info=confirmedTickets[ticketKey(e.home,e.away)];
+  const small=node('div','muted',info?'Single ticket · Stake '+money(info.stake)+' · Potential payout '+money(info.payout)+' · Potential profit '+money(info.payout-info.stake):'Ticket · Payout not verified');
+  small.style.fontSize='11px';small.style.marginTop='12px';card.append(small);
+  if(parlay.legs.some(t=>normalize(e.home)===normalize(t)||normalize(e.away)===normalize(t)))card.append(node('div','ticket','Also in 3-leg parlay · Scotland / Germany / Slovakia · Shared stake $75.00 · Shared payout $155.01 (counted once)'));
+  root.append(card);
+ }
+}
+async function refresh(){
+ if(loading)return;loading=true;byId('refresh').disabled=true;
+ try{
+  const res=await fetch('/api/nations/scoreboard',{cache:'no-store'});
+  if(!res.ok)throw Error('HTTP '+res.status);
+  const data=await res.json();if(!Array.isArray(data.events))throw Error('Invalid ESPN response');
+  events=data.events;render();byId('status').textContent='ESPN checked '+new Date(data.fetchedAt).toLocaleTimeString()+' · '+events.length+' fixtures';
+ }catch(error){byId('status').textContent='ESPN unavailable: '+error.message;render()}
+ finally{loading=false;byId('refresh').disabled=false}
+}
+byId('filter').addEventListener('change',render);
+byId('refresh').addEventListener('click',refresh);
+setInterval(()=>{if(!document.hidden)refresh()},60000);
+render();refresh();
 </script></body></html>
