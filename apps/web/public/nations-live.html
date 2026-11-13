@@ -23,6 +23,10 @@ const confirmedTickets={
  [ticketKey('Slovakia','Faroe Islands')]:{stake:60,payout:85.71,label:'Single ticket'}
 };
 const parlay={stake:75,payout:155.01,legs:['Scotland','Germany','Slovakia']};
+const removedKey='iloreto:nations-removed-tickets:v1';
+let removedTickets=[];try{const saved=JSON.parse(localStorage.getItem(removedKey)||'[]');if(Array.isArray(saved))removedTickets=saved.filter(x=>typeof x==='string')}catch{}
+const isRemoved=k=>removedTickets.includes(k);
+function removeTicket(k){if(!isRemoved(k))removedTickets.push(k);try{localStorage.setItem(removedKey,JSON.stringify(removedTickets))}catch{}render()}
 let events=[],loading=false;
 function node(tag,cls,value){const x=document.createElement(tag);if(cls)x.className=cls;if(value!==undefined)x.textContent=String(value);return x}
 function metric(root,label,a,b,bar=false){const wrap=node('div','stat'),line=node('div','statline');line.append(node('strong','',a??'—'),node('span','statname',label),node('strong','',b??'—'));wrap.append(line);if(bar&&a!==null&&b!==null){const left=parseFloat(a),right=parseFloat(b);if(Number.isFinite(left)&&Number.isFinite(right)&&left+right>0){const track=node('div','bar'),fill=node('span');fill.style.width=(100*left/(left+right))+'%';track.append(fill,node('i'));wrap.append(track)}}root.append(wrap)}
@@ -63,10 +67,10 @@ function resultFor(selection){
  return normalize(winner)===normalize(selection.pick)?'win':'loss';
 }
 function settlement(){
- const singleResults=selections.filter(selection=>confirmedTickets[ticketKey(selection.home,selection.away)]).map(selection=>({ticket:confirmedTickets[ticketKey(selection.home,selection.away)],result:resultFor(selection),pick:selection.pick}));
+ const singleResults=selections.filter(selection=>confirmedTickets[ticketKey(selection.home,selection.away)]&&!isRemoved(ticketKey(selection.home,selection.away))).map(selection=>({ticket:confirmedTickets[ticketKey(selection.home,selection.away)],result:resultFor(selection),pick:selection.pick}));
  const parlayLegs=selections.filter(selection=>parlay.legs.includes(selection.pick)).map(selection=>({pick:selection.pick,result:resultFor(selection)}));
  const parlayResult=parlayLegs.some(r=>r.result==='loss')?'loss':parlayLegs.length===parlay.legs.length&&parlayLegs.every(r=>r.result==='win')?'win':'pending';
- const all=[...singleResults,{ticket:parlay,result:parlayResult}];
+ const all=[...singleResults,...(isRemoved('parlay')?[]:[{ticket:parlay,result:parlayResult}])];
  const stake=all.reduce((n,r)=>n+r.ticket.stake,0);
  const payout=all.reduce((n,r)=>n+(r.result==='loss'?0:r.ticket.payout),0);
  const profit=payout-stake;
@@ -79,12 +83,13 @@ function renderOverview(){
   const item=node('div',''),name=node('span','muted',label+' '),amount=node('strong','', (label==='Profit'&&value>0?'+':'')+money(value));
   item.append(name,amount);el.append(item);
  }
+ if(!isRemoved('parlay')){const btn=node('button','','🗑 Remove parlay');btn.type='button';btn.setAttribute('aria-label','Remove 3-leg parlay');btn.addEventListener('click',()=>removeTicket('parlay'));el.append(btn)}
 }
 function render(){
  renderOverview();
  const root=byId('matches');root.replaceChildren();
  const filter=byId('filter').value;
- const selected=events.filter(e=>findTicket(e)&&(filter==='all'||String(e.status).toLowerCase()===filter));
+ const selected=events.filter(e=>(confirmedTickets[ticketKey(e.home,e.away)]&&!isRemoved(ticketKey(e.home,e.away))||!isRemoved('parlay')&&parlay.legs.some(t=>normalize(e.home)===normalize(t)||normalize(e.away)===normalize(t)))&&(filter==='all'||String(e.status).toLowerCase()===filter));
  if(!selected.length){root.append(node('p','empty','No ticketed fixtures available from ESPN for this date/filter. Ticket summary remains available above.'));return}
  for(const e of selected){
   const card=node('article','match'),head=node('div','head'),live=e.status==='Live';
@@ -93,11 +98,12 @@ function render(){
   names.append(node('div','',e.home),node('div','',e.away));scores.append(node('div','',e.homeScore??'—'),node('div','',e.awayScore??'—'));teams.append(names,scores);card.append(teams);
   const insight=node('div','insight');insight.append(node('strong','','GAME READ · '),document.createTextNode(matchInsight(e)));card.append(insight);
   const comparison=node('div','stats');chart(comparison,e);card.append(comparison);
-  const info=confirmedTickets[ticketKey(e.home,e.away)];
+  const key=ticketKey(e.home,e.away);
+  const info=isRemoved(key)?null:confirmedTickets[key];
   const outcome=resultFor(selections.find(x=>ticketKey(x.home,x.away)===ticketKey(e.home,e.away)));
   const small=info?node('div','muted','Single ticket · '+outcome.toUpperCase()+' · Stake '+money(info.stake)+' · Payout '+money(outcome==='loss'?0:info.payout)+' · Profit '+money((outcome==='loss'?0:info.payout)-info.stake)):null;
-  if(small){small.style.fontSize='11px';small.style.marginTop='12px';card.append(small);}
-  if(parlay.legs.some(t=>normalize(e.home)===normalize(t)||normalize(e.away)===normalize(t)))card.append(node('div','ticket','Also in 3-leg parlay · Scotland / Germany / Slovakia · Shared stake $75.00 · Shared payout $155.01 (counted once)'));
+  if(small){small.style.fontSize='11px';small.style.marginTop='12px';card.append(small);const trash=node('button','','🗑');trash.type='button';trash.setAttribute('aria-label','Remove '+e.home+' vs '+e.away+' single ticket');trash.title='Remove single ticket';trash.style.marginTop='8px';trash.addEventListener('click',()=>removeTicket(key));card.append(trash);}
+  if(!isRemoved('parlay')&&parlay.legs.some(t=>normalize(e.home)===normalize(t)||normalize(e.away)===normalize(t)))card.append(node('div','ticket','Also in 3-leg parlay · Scotland / Germany / Slovakia · Shared stake $75.00 · Shared payout $155.01 (counted once)'));
   root.append(card);
  }
 }
