@@ -43,7 +43,7 @@ function chart(root,e){
  const keys=[['Possession','possession'],['Shots','shots'],['Shots on target','shotsOnTarget'],['xG','xg'],['Corners','corners'],['Pass accuracy','passAccuracy']];
  const available=keys.map(([label,key])=>({label,left:num(e.stats?.home?.[key]),right:num(e.stats?.away?.[key])})).filter(x=>Number.isFinite(x.left)&&Number.isFinite(x.right));
  if(!available.length)return;
- const title=node('div','muted','MATCH COMPARISON · '+e.home+' (blue) / '+e.away+' (amber)');root.append(title);
+ const title=node('div','muted','MATCH STATISTICS · '+e.home+' (blue) / '+e.away+' (amber)');root.append(title);
  for(const x of available){const wrap=node('div','stat'),line=node('div','statline');line.append(node('strong','',x.left),node('span','statname',x.label),node('strong','',x.right));wrap.append(line);
  const bar=node('div','bar'),left=node('span'),right=node('i');const total=x.left+x.right;left.style.width=(total>0?100*x.left/total:50)+'%';bar.append(left,right);wrap.append(bar);root.append(wrap);}
 }
@@ -93,13 +93,6 @@ function render(){
   head.append(node('span','muted',e.date?new Date(e.date).toLocaleString():'Nations League'),node('span','state '+(live?'live':e.status==='Final'?'final':''),e.status+(live&&e.minute!==null?' · '+e.minute+' min':'')));card.append(head);
   const teams=node('div','teams'),names=node('div','names'),scores=node('div','score');
   names.append(node('div','',e.home),node('div','',e.away));scores.append(node('div','',e.homeScore??'—'),node('div','',e.awayScore??'—'));teams.append(names,scores);card.append(teams);
-  const stats=node('div','stats');
-  for(const [label,key] of [['Possession','possession'],['Shots','shots'],['Shots on target','shotsOnTarget'],['Expected goals (xG)','xg'],['Shots inside box','shotsInsideBox'],['Pass accuracy','passAccuracy'],['Corners','corners'],['Fouls','fouls'],['Yellow cards','yellowCards'],['Red cards','redCards'],['Tackles','tackles'],['Goalkeeper saves','saves']]){
-   const a=e.stats?.home?.[key]??null,b=e.stats?.away?.[key]??null;
-   if(key==='possession'||a!==null||b!==null)metric(stats,label,a,b,key==='possession');
-  }
-  card.append(stats);
-  const insight=node('div','insight');insight.append(node('strong','','MATCH FACTS · '),document.createTextNode(matchInsight(e)));card.append(insight);
   const comparison=node('div','stats');chart(comparison,e);card.append(comparison);
   const info=confirmedTickets[ticketKey(e.home,e.away)];
   const outcome=resultFor(selections.find(x=>ticketKey(x.home,x.away)===ticketKey(e.home,e.away)));
