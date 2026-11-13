@@ -54,8 +54,8 @@ test('settles a final single loss and updates aggregate payout and profit',async
  await page.goto(pageUrl);
  const overview=page.getByRole('region',{name:'Ticket overview'});
  await expect(overview).toContainText('$420.41');
- await expect(overview).toContainText('$127.79');
- await expect(page.locator('.match')).toContainText('LOSS');
+ await expect(overview).toContainText('$131.89');
+ await expect(page.locator('.match').first()).toContainText('LOSS');
 });
 test('settles winning singles and parlay only when all three legs are final wins',async ({page})=>{
  const fixtures=[
@@ -74,7 +74,7 @@ test('trash removes single ticket and recalculates totals persistently',async ({
  const overview=page.getByRole('region',{name:'Ticket overview'});
  await expect(overview).toContainText('$263.92');
  await expect(overview).toContainText('$420.41');
- await expect(page.locator('.match')).toHaveCount(0);
+ await expect(page.locator('.match')).toHaveCount(1);
  await page.reload();
  await expect(overview).toContainText('$263.92');
 });
@@ -93,7 +93,7 @@ test('Scotland remains a parlay fixture alongside its restored single',async ({p
  await expect(page.getByRole('article',{name:'3-leg parlay ticket'})).not.toContainText('Single ticket');
 });
 
-test('parlay is a standalone removable ticket and Scotland has no cashed-out single',async ({page})=>{
+test('parlay is a standalone removable ticket alongside Scotland single',async ({page})=>{
  await page.goto(pageUrl);
  const parlay=page.getByRole('article',{name:'3-leg parlay ticket'});
  await expect(parlay).toBeVisible();
