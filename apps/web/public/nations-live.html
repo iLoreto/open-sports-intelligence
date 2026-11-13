@@ -93,6 +93,7 @@ function render(){
   head.append(node('span','muted',e.date?new Date(e.date).toLocaleString():'Nations League'),node('span','state '+(live?'live':e.status==='Final'?'final':''),e.status+(live&&e.minute!==null?' · '+e.minute+' min':'')));card.append(head);
   const teams=node('div','teams'),names=node('div','names'),scores=node('div','score');
   names.append(node('div','',e.home),node('div','',e.away));scores.append(node('div','',e.homeScore??'—'),node('div','',e.awayScore??'—'));teams.append(names,scores);card.append(teams);
+  const insight=node('div','insight');insight.append(node('strong','','GAME READ · '),document.createTextNode(matchInsight(e)));card.append(insight);
   const comparison=node('div','stats');chart(comparison,e);card.append(comparison);
   const info=confirmedTickets[ticketKey(e.home,e.away)];
   const outcome=resultFor(selections.find(x=>ticketKey(x.home,x.away)===ticketKey(e.home,e.away)));
