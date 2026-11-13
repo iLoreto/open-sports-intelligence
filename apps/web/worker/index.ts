@@ -1,3 +1,4 @@
+import { getNationsScoreboard } from './nations-scoreboard.ts';
 import { moneyPuckComparison } from './moneypuck.ts';
 import { sharedScan, uncachedScan, type ScanSnapshot, type ScanDatabase } from './scan-cache.ts';
 interface Environment { ASSETS: { fetch(request: Request): Promise<Response> }; DB?: ScanDatabase }
@@ -328,6 +329,11 @@ export default {
         if (!teams.length) throw new Error('ESPN returned no teams');
         return json({ source: 'ESPN public team directory', league: match[1], fetchedAt: new Date().toISOString(), teams });
       } catch (e) { return json({ error: e instanceof Error ? e.message : 'ESPN team directory unavailable' }, 502); }
+    }
+    if (url.pathname === '/api/nations/scoreboard') {
+      if (request.method !== 'GET') return json({error:'Method not allowed'},405);
+      try { return json(await getNationsScoreboard()); }
+      catch (e) { return json({error:e instanceof Error?e.message:'ESPN Nations League unavailable'},502); }
     }
     if (url.pathname.startsWith('/api/nba/')) {
       if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
