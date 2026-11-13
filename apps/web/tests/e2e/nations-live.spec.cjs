@@ -1,8 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const fs = require('node:fs');
-const path = require('node:path');
-const { pathToFileURL } = require('node:url');
-const pageUrl = pathToFileURL(path.resolve(__dirname, '../public/nations-live.html')).href;
+const pageUrl = 'http://127.0.0.1:4179/nations-live.html';
 const sample = (overrides = {}) => ({
  home:'Gibraltar',away:'Andorra',homeScore:0,awayScore:2,status:'Live',minute:45,date:'2026-11-13T20:00:00Z',
  stats:{home:{possession:'40%',shots:'4',shotsOnTarget:'1',xg:null},away:{possession:'60%',shots:'9',shotsOnTarget:'5',xg:null}},
