@@ -1,5 +1,5 @@
 /** Read-only ESPN UEFA Nations League scoreboard adapter. Never invent missing fixtures or scores. */
-export type NationsStats = {possession:string|null;shots:string|null;shotsOnTarget:string|null};
+export type NationsStats = {possession:string|null;shots:string|null;shotsOnTarget:string|null;xg:string|null;shotsInsideBox:string|null;passAccuracy:string|null;corners:string|null;fouls:string|null;yellowCards:string|null;redCards:string|null;tackles:string|null;saves:string|null};
 export type NationsScore = {id:string;home:string;away:string;homeScore:number|null;awayScore:number|null;status:string;minute:number|null;date:string;stats:{home:NationsStats;away:NationsStats}};
 type Competitor={homeAway?:string;score?:string|number|{value?:number;displayValue?:string};statistics?:{name?:string;displayName?:string;abbreviation?:string;displayValue?:string;value?:number|string}[];team?:{displayName?:string;shortDisplayName?:string;name?:string}};
 type Event={id?:string;date?:string;name?:string;competitions?:{competitors?:Competitor[];status?:{type?:{name?:string;state?:string;completed?:boolean};displayClock?:string}}[];status?:{type?:{name?:string;state?:string;completed?:boolean};displayClock?:string}};
@@ -12,7 +12,7 @@ function stats(t:Competitor):NationsStats {
   const val=item.displayValue??item.value;
   return val===undefined||val===null||String(val)===''?null:String(val);
  };
- return {possession:get(['possession','possessionpct','possessionpercentage','ballpossession']),shots:get(['totalshots','shots','totalshotsattempted']),shotsOnTarget:get(['shotsontarget','shotsongoal','ontargetscoringatt'])};
+ return {possession:get(['possession','possessionpct','possessionpercentage','ballpossession']),shots:get(['totalshots','shots','totalshotsattempted']),shotsOnTarget:get(['shotsontarget','shotsongoal','ontargetscoringatt']),xg:get(['expectedgoals','xg']),shotsInsideBox:get(['shotsinsidebox','shotsinsidepenaltyarea']),passAccuracy:get(['passaccuracy','passingaccuracy','passcompletion']),corners:get(['cornerkicks','corners']),fouls:get(['fouls','foulscommitted']),yellowCards:get(['yellowcards']),redCards:get(['redcards']),tackles:get(['tackles']),saves:get(['saves','goalkeepersaves'])};
 }
 export function normalizeNationsScoreboard(payload:unknown):NationsScore[]{
  if(!payload||typeof payload!=='object'||!('events' in payload)||!Array.isArray(payload.events))throw new Error('ESPN scoreboard missing events');

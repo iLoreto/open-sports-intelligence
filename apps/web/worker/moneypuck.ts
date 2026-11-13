@@ -51,18 +51,45 @@ export function parseMoneyPuckTeams(text: string): Map<string, XgTeam> {
   if (teams.size < 30 || teams.size > 34) throw new Error('Incomplete MoneyPuck NHL team coverage');
   return teams;
 }
+const TTL_MS = 600_000;
+type CachedTeams = { teams: Map<string,XgTeam>; fetchedAt: string; expiresAt: number };
+const seasonCache = new Map<number,CachedTeams>();
+const inFlight = new Map<number,Promise<CachedTeams>>();
+async function loadTeams(season:number):Promise<{entry:CachedTeams;stale:boolean}> {
+ const cached=seasonCache.get(season);
+ if(cached && Date.now()<cached.expiresAt)return {entry:cached,stale:false};
+ let pending=inFlight.get(season);
+ if(!pending){
+  pending=(async()=>{
+   const response=await fetch(moneyPuckUrl(season), {signal:AbortSignal.timeout(12000),headers:{Accept:'text/csv'}});
+   if(!response.ok)throw new Error('MoneyPuck CSV HTTP '+response.status);
+   const csv=await response.text();
+   if(csv.length>5_000_000)throw new Error('MoneyPuck CSV too large');
+   const teams=parseMoneyPuckTeams(csv);
+   const fetchedAt=new Date().toISOString();
+   const entry={teams,fetchedAt,expiresAt:Date.now()+TTL_MS};
+   seasonCache.set(season,entry);
+   return entry;
+  })();
+  inFlight.set(season,pending);
+  void pending.finally(()=>{if(inFlight.get(season)===pending)inFlight.delete(season)}).catch(()=>{});
+ }
+ try{return {entry:await pending,stale:false}}
+ catch(error){
+  const previous=seasonCache.get(season);
+  if(previous)return {entry:previous,stale:true};
+  throw error;
+ }
+}
 export async function moneyPuckComparison(left: string, right: string, season: number) {
   if (!/^[A-Z]{2,4}$/.test(left) || !/^[A-Z]{2,4}$/.test(right) || left === right)
     throw new Error('Select two different NHL teams');
-  const response = await fetch(moneyPuckUrl(season), { signal: AbortSignal.timeout(12000), headers: { Accept: 'text/csv' } });
-  if (!response.ok) throw new Error('MoneyPuck CSV HTTP ' + response.status);
-  const csv = await response.text();
-  if (csv.length > 5_000_000) throw new Error('MoneyPuck CSV too large');
-  const teams = parseMoneyPuckTeams(csv);
+  const {entry,stale}=await loadTeams(season);
+  const teams=entry.teams;
   const aliases: Record<string,string> = { LA:'LAK', SJ:'SJS', TB:'TBL', UT:'UTA', UTAH:'UTA', VGK:'VGK', LV:'VGK', NJ:'NJD', NYI:'NYI', NYR:'NYR' };
   const a = teams.get(aliases[left] || left), b = teams.get(aliases[right] || right);
   if (!a || !b) throw new Error('Team missing from MoneyPuck season summary');
-  return { source: 'MoneyPuck season summary (5-on-5)', fetchedAt: new Date().toISOString(), season,
+  return { source: 'MoneyPuck season summary (5-on-5)', fetchedAt: entry.fetchedAt, cacheExpiresAt: new Date(entry.expiresAt).toISOString(), cacheTtlSeconds:600, stale, season,
     situation: '5on5', left: a, right: b,
     note: 'Season-to-date expected goals, not game-win probabilities. Does not include current injuries, starting goalies, or market quotes.',
     attribution: 'Data: MoneyPuck.com' };
