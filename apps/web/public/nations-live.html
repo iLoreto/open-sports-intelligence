@@ -5,7 +5,7 @@
 </style></head><body><main>
 <header><div><div class="eyebrow">iLORETO DEVELOPMENT · ESPN MATCH CENTER</div><h1>⚽ Nations League Live Scores</h1><div class="muted">Teams · goals · possession · match statistics · ESPN source</div></div><div class="toolbar"><select id="filter" aria-label="Filter matches"><option value="all">All fixtures</option><option value="live">Live</option><option value="final">Final</option><option value="scheduled">Upcoming</option></select><button id="refresh">Refresh ESPN</button></div></header>
 <p class="muted" id="status" role="status">Connecting to ESPN…</p><section id="overview" class="summary" aria-label="Ticket overview"></section><section class="grid" id="matches" aria-label="ESPN Nations League fixtures"></section>
-<p class="muted footer">Scores and match statistics come from ESPN. A dash means ESPN did not provide that value. Refreshes every 60 seconds while this tab is visible. Ticket stake and potential payout appear in small print; no live betting prices. <a href="/">Sports Radar home</a></p>
+
 </main><script>
 'use strict';
 const byId=id=>document.getElementById(id);
@@ -31,13 +31,13 @@ function metric(root,label,a,b,bar=false){const wrap=node('div','stat'),line=nod
 const num=v=>v===null||v===undefined||v===''?null:Number.parseFloat(String(v).replace('%',''));
 function matchInsight(e){
  const h=e.stats?.home||{},a=e.stats?.away||{};
- const pos=[num(h.possession),num(a.possession)],shots=[num(h.shots),num(a.shots)],target=[num(h.shotsOnTarget),num(a.shotsOnTarget)];
+ const fields=[['Possession','possession','%'],['Shots','shots',''],['Shots on target','shotsOnTarget',''],['Expected goals (xG)','xg',''],['Corners','corners',''],['Fouls','fouls',''],['Yellow cards','yellowCards',''],['Red cards','redCards','']];
  const lines=[];
- if(pos.every(Number.isFinite)){const leader=pos[0]>pos[1]?e.home:e.away;lines.push(leader+' controls '+Math.max(...pos).toFixed(1)+'% of possession');}
- if(shots.every(Number.isFinite)){const leader=shots[0]>shots[1]?e.home:e.away;lines.push(shots[0]===shots[1]?'Shots are even':leader+' leads shots '+Math.max(...shots)+'–'+Math.min(...shots));}
- if(target.every(Number.isFinite))lines.push('On-target attempts: '+target[0]+'–'+target[1]);
- const xg=[num(h.xg),num(a.xg)];if(xg.every(Number.isFinite))lines.push('Chance quality (xG): '+xg[0]+'–'+xg[1]);
- return lines.length?lines.join(' · ')+'. Possession alone does not prove better chances.':'ESPN has not supplied enough live statistics to assess match control.';
+ for(const [label,key,suffix] of fields){
+  const home=num(h[key]),away=num(a[key]);
+  if(Number.isFinite(home)&&Number.isFinite(away))lines.push(label+': '+e.home+' '+home+suffix+' / '+e.away+' '+away+suffix);
+ }
+ return lines.length?lines.join(' · '):'No comparative match statistics provided by ESPN.';
 }
 function chart(root,e){
  const keys=[['Possession','possession'],['Shots','shots'],['Shots on target','shotsOnTarget'],['xG','xg'],['Corners','corners'],['Pass accuracy','passAccuracy']];
@@ -47,14 +47,40 @@ function chart(root,e){
  for(const x of available){const wrap=node('div','stat'),line=node('div','statline');line.append(node('strong','',x.left),node('span','statname',x.label),node('strong','',x.right));wrap.append(line);
  const bar=node('div','bar'),left=node('span'),right=node('i');const total=x.left+x.right;left.style.width=(total>0?100*x.left/total:50)+'%';bar.append(left,right);wrap.append(bar);root.append(wrap);}
 }
+const selections=[
+ {home:'North Macedonia',away:'Scotland',pick:'Scotland'},
+ {home:'Germany',away:'Serbia',pick:'Germany'},
+ {home:'Faroe Islands',away:'Slovakia',pick:'Slovakia'},
+ {home:'Greece',away:'Netherlands',pick:'Netherlands'},
+ {home:'Switzerland',away:'Slovenia',pick:'Switzerland'},
+ {home:'Iceland',away:'Bulgaria',pick:'Iceland'},
+ {home:'Gibraltar',away:'Andorra',pick:'Andorra'},
+ {home:'Azerbaijan',away:'Liechtenstein',pick:'Azerbaijan'}
+];
+function resultFor(selection){
+ const event=events.find(e=>ticketKey(e.home,e.away)===ticketKey(selection.home,selection.away));
+ if(!event||String(event.status).toLowerCase()!=='final'||!Number.isFinite(event.homeScore)||!Number.isFinite(event.awayScore))return 'pending';
+ if(event.homeScore===event.awayScore)return 'loss';
+ const winner=event.homeScore>event.awayScore?event.home:event.away;
+ return normalize(winner)===normalize(selection.pick)?'win':'loss';
+}
+function settlement(){
+ const singleResults=selections.map(selection=>({ticket:confirmedTickets[ticketKey(selection.home,selection.away)],result:resultFor(selection),pick:selection.pick}));
+ const parlayLegs=singleResults.filter(r=>parlay.legs.includes(r.pick));
+ const parlayResult=parlayLegs.some(r=>r.result==='loss')?'loss':parlayLegs.length===parlay.legs.length&&parlayLegs.every(r=>r.result==='win')?'win':'pending';
+ const all=[...singleResults,{ticket:parlay,result:parlayResult}];
+ const stake=all.reduce((n,r)=>n+r.ticket.stake,0);
+ const payout=all.reduce((n,r)=>n+(r.result==='loss'?0:r.ticket.payout),0);
+ const profit=payout-stake;
+ return {stake,payout,profit,all};
+}
 function renderOverview(){
- const singles=Object.values(confirmedTickets);
- const stake=singles.reduce((n,t)=>n+t.stake,0)+parlay.stake;
- const payout=singles.reduce((n,t)=>n+t.payout,0)+parlay.payout;
+ const {stake,payout,profit}=settlement();
  const el=byId('overview');el.replaceChildren();
- el.append(node('strong','','8 singles + 1 parlay · 9 tickets'));
- el.append(node('div','','Total stakes '+money(stake)+' · Potential payout '+money(payout)+' · Potential profit '+money(payout-stake)));
- el.append(node('div','muted','Potential results only if all tickets win. Ticket amounts are based on Novig receipts; no Open Positions valuation.'));
+ for(const [label,value] of [['Stake',stake],['Payout',payout],['Profit',profit]]){
+  const item=node('div',''),name=node('span','muted',label+' '),amount=node('strong','', (label==='Profit'&&value>0?'+':'')+money(value));
+  item.append(name,amount);el.append(item);
+ }
 }
 function render(){
  renderOverview();
@@ -73,10 +99,11 @@ function render(){
    if(key==='possession'||a!==null||b!==null)metric(stats,label,a,b,key==='possession');
   }
   card.append(stats);
-  const insight=node('div','insight');insight.append(node('strong','','MATCH READ · '),document.createTextNode(matchInsight(e)));card.append(insight);
+  const insight=node('div','insight');insight.append(node('strong','','MATCH FACTS · '),document.createTextNode(matchInsight(e)));card.append(insight);
   const comparison=node('div','stats');chart(comparison,e);card.append(comparison);
   const info=confirmedTickets[ticketKey(e.home,e.away)];
-  const small=node('div','muted',info?'Single ticket · Stake '+money(info.stake)+' · Potential payout '+money(info.payout)+' · Potential profit '+money(info.payout-info.stake):'Ticket · Payout not verified');
+  const outcome=resultFor(selections.find(x=>ticketKey(x.home,x.away)===ticketKey(e.home,e.away)));
+  const small=node('div','muted',info?'Single ticket · '+outcome.toUpperCase()+' · Stake '+money(info.stake)+' · Payout '+money(outcome==='loss'?0:info.payout)+' · Profit '+money((outcome==='loss'?0:info.payout)-info.stake):'Ticket · Payout not verified');
   small.style.fontSize='11px';small.style.marginTop='12px';card.append(small);
   if(parlay.legs.some(t=>normalize(e.home)===normalize(t)||normalize(e.away)===normalize(t)))card.append(node('div','ticket','Also in 3-leg parlay · Scotland / Germany / Slovakia · Shared stake $75.00 · Shared payout $155.01 (counted once)'));
   root.append(card);

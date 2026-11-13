@@ -10,7 +10,7 @@ test.beforeEach(async ({page}) => {
 });
 test('renders nine confirmed tickets without double-counting parlay',async ({page})=>{
  await page.goto(pageUrl);
- await expect(page.getByRole('region',{name:'Ticket overview'})).toContainText('8 singles + 1 parlay');
+ await expect(page.getByRole('region',{name:'Ticket overview'})).toContainText('Stake');
  await expect(page.getByRole('region',{name:'Ticket overview'})).toContainText('$343.52');
  await expect(page.getByRole('region',{name:'Ticket overview'})).toContainText('$563.25');
  await expect(page.getByRole('region',{name:'Ticket overview'})).toContainText('$219.73');
@@ -23,7 +23,10 @@ test('shows live fixture, statistics, insight and one shared parlay',async ({pag
  await expect(fixtures).toContainText('Gibraltar');
  await expect(fixtures).toContainText('Andorra');
  await expect(fixtures).toContainText('Possession');
- await expect(fixtures).toContainText('MATCH READ');
+ await expect(fixtures).toContainText('MATCH FACTS');
+ await expect(fixtures).toContainText('Possession: Gibraltar 40% / Andorra 60%');
+ await expect(fixtures).not.toContainText('controls');
+ await expect(fixtures).not.toContainText('better chances');
  await expect(fixtures).toContainText('Stake $24.60');
 });
 test('filter leaves financial summary visible',async ({page})=>{
@@ -43,4 +46,23 @@ test('script contains no syntax or runtime errors',async ({page})=>{
  await page.goto(pageUrl);
  await expect(page.getByRole('status')).toContainText('ESPN checked');
  expect(errors).toEqual([]);
+});
+
+test('settles a final single loss and updates aggregate payout and profit',async ({page})=>{
+ await page.route('**/api/nations/scoreboard',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({fetchedAt:'2026-11-13T20:48:00Z',events:[sample({status:'Final',homeScore:2,awayScore:0})]})}));
+ await page.goto(pageUrl);
+ const overview=page.getByRole('region',{name:'Ticket overview'});
+ await expect(overview).toContainText('$523.21');
+ await expect(overview).toContainText('$179.69');
+ await expect(page.locator('.match')).toContainText('LOSS');
+});
+test('settles winning singles and parlay only when all three legs are final wins',async ({page})=>{
+ const fixtures=[
+ sample({home:'North Macedonia',away:'Scotland',homeScore:0,awayScore:1,status:'Final'}),
+ sample({home:'Germany',away:'Serbia',homeScore:2,awayScore:0,status:'Final'}),
+ sample({home:'Faroe Islands',away:'Slovakia',homeScore:0,awayScore:3,status:'Final'})
+ ];
+ await page.route('**/api/nations/scoreboard',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({fetchedAt:'2026-11-13T20:48:00Z',events:fixtures})}));
+ await page.goto(pageUrl);
+ await expect(page.getByRole('region',{name:'Ticket overview'})).toContainText('$563.25');
 });
