@@ -5,7 +5,7 @@ const summary={header:{competitions:[{competitors:[{team:{abbreviation:'NY'},sco
  {period:{number:1},clock:{displayValue:'11:20'},homeScore:'2',awayScore:'3',scoringPlay:true},
  {period:{number:3},clock:{displayValue:'4:24'},homeScore:'80',awayScore:'69',scoringPlay:true}
 ]};
-test.beforeEach(async({page})=>{await page.route('**/site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?**',r=>r.fulfill({status:200,contentType:'application/json',body:JSON.stringify(summary)}))});
+test.beforeEach(async({page})=>{await page.route('**/api/nba/momentum',r=>r.fulfill({status:200,contentType:'application/json',body:JSON.stringify(summary)}))});
 test('legacy monitor opens NBA monitor and removes soccer ticket display',async({page})=>{
  await page.goto(url);await expect(page).toHaveURL(/nba-momentum-monitor.html/);
  await expect(page.getByRole('heading',{name:/Knicks vs Pacers/})).toBeVisible();
@@ -27,7 +27,7 @@ test('manual refresh updates the live chart without dropping history',async({pag
  await expect(page.locator('#margin polyline')).toHaveCount(1);
 });
 test('API failure is clearly identified without fabricated momentum',async({page})=>{
- await page.route('**/site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?**',r=>r.fulfill({status:503,body:'unavailable'}));
+ await page.route('**/api/nba/momentum',r=>r.fulfill({status:503,body:'unavailable'}));
  await page.goto(url);await expect(page.getByRole('status')).toContainText('Data unavailable');
  await expect(page.locator('#margin polyline')).toHaveCount(0);
 });
@@ -59,4 +59,10 @@ test('monitor script does not leak source text into the rendered page',async({pa
  await expect(page.getByRole('region',{name:'Ticket overview'})).toContainText('$119.56');
  await expect(page.locator('#totals polyline')).toHaveCount(2);
  expect(errors).toEqual([]);
+});
+
+test('shows explicit upstream error rather than indefinite waiting',async({page})=>{
+ await page.route('**/api/nba/momentum',r=>r.fulfill({status:502,contentType:'application/json',body:JSON.stringify({error:'ESPN request failed'})}));
+ await page.goto(url);
+ await expect(page.getByRole('status')).toContainText('ESPN request failed');
 });
