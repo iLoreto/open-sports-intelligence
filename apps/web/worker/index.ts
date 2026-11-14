@@ -100,7 +100,7 @@ export default {
       if (request.method !== 'GET') return json({error:'Method not allowed'},405);
       const league=url.searchParams.get('league');
       const event=url.searchParams.get('event');
-      if (!['nba','nhl'].includes(league||'') || !event || !/^\\d{6,12}$/.test(event)) return json({error:'Invalid league or ESPN event'},400);
+      if (!['nba','nhl'].includes(league||'') || !event || !/^[0-9]{6,12}$/.test(event)) return json({error:'Invalid league or ESPN event'},400);
       const sport=league==='nba'?'basketball/nba':'hockey/nhl';
       try {
         const upstream=await fetch('https://site.api.espn.com/apis/site/v2/sports/'+sport+'/summary?event='+event,{headers:{Accept:'application/json'},signal:AbortSignal.timeout(12000)});
