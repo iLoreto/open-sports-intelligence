@@ -10,7 +10,7 @@
 <section class="panel" id="tickets"><h2>Active Novig tickets · screenshot snapshot</h2><p class="muted">Recorded November 13, 2026 at 5:52–5:56 PM PT. Not live Novig prices. Soccer tickets are excluded.</p><div id="ticket-list"></div><div id="ticket-summary" class="panel" aria-label="Ticket overview"></div><p class="muted foot">Cash-out quotes are snapshots, not guaranteed execution prices. Removing a ticket here changes monitor totals only, never your Novig account.</p></section>
 </main><script>
 'use strict';
-const GAME_ID='401909296',ENDPOINT='https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event='+GAME_ID;
+const ENDPOINT='/api/nba/momentum';
 const $=id=>document.getElementById(id);
 let loading=false;
 const ticketStoreKey='iloreto:nba-monitor-removed:v1';
@@ -41,12 +41,12 @@ function pointsFromPlay(p){const x=p.scoreValue??p.scoringPlay?.scoreValue;retur
 function extract(data){
  const comp=data.header?.competitions?.[0]||data.boxscore?.teams?.[0]?.competition||{};
  const teams=comp.competitors||[];
- const ind=teams.find(t=>t.team?.abbreviation==='IND'),ny=teams.find(t=>t.team?.abbreviation==='NY');
+ const ind=teams.find(t=>t.team?.abbreviation==='IND'),ny=teams.find(t=>['NY','NYK'].includes(t.team?.abbreviation));
  const plays=data.plays||[];
  const rows=[{t:0,ind:0,ny:0}];let lastI=0,lastN=0;
  for(const p of plays){const t=elapsed(p);const score=p.homeScore!==undefined&&p.awayScore!==undefined?{home:n(p.homeScore),away:n(p.awayScore)}:null;
   if(score){lastI=score.home;lastN=score.away}
-  else if(p.scoringPlay||pointsFromPlay(p)>0){const abbr=p.team?.abbreviation||'';if(abbr==='IND')lastI+=pointsFromPlay(p);if(abbr==='NY')lastN+=pointsFromPlay(p)}
+  else if(p.scoringPlay||pointsFromPlay(p)>0){const abbr=p.team?.abbreviation||'';if(abbr==='IND')lastI+=pointsFromPlay(p);if(['NY','NYK'].includes(abbr))lastN+=pointsFromPlay(p)}
   else continue;
   rows.push({t,ind:lastI,ny:lastN});
  }
@@ -68,7 +68,7 @@ function draw(id,rows,kind){
 async function refresh(){
  if(loading)return;loading=true;$('refresh').disabled=true;
  try{
-  const response=await fetch(ENDPOINT,{cache:'no-store'});if(!response.ok)throw Error('ESPN HTTP '+response.status);
+  const response=await fetch(ENDPOINT,{cache:'no-store'});if(!response.ok){const failure=await response.json().catch(()=>({}));throw Error(failure.error||'ESPN HTTP '+response.status)}
   const data=extract(await response.json());$('ny').textContent='Knicks '+data.ny;$('ind').textContent='Pacers '+data.ind;$('clock').textContent=data.status;
   if(!data.hasPlays||data.rows.length<2)throw Error('ESPN has not supplied scoring play-by-play');
   draw('totals',data.rows,'totals');draw('margin',data.rows,'margin');
