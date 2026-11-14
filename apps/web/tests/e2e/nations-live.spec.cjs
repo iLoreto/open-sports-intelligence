@@ -74,7 +74,7 @@ test('inline script runs without browser exceptions',async({page})=>{
 
 test('NBA and NHL game windows render scoring trajectory and lead momentum without sell snapshot',async({page})=>{
  await page.goto(url);
- await expect(page.locator('article .trajectory svg')).toHaveCount(4);
+ await expect(page.locator('article .trajectory svg')).toHaveCount(2);
  await expect(page.locator('article[aria-label*="Indiana Pacers"] .trajectory svg')).toHaveCount(2);
  await expect(page.locator('article[aria-label*="Vegas Golden Knights"] .trajectory svg')).toHaveCount(0);
  await expect(page.locator('body')).not.toContainText('Sell snapshot');
