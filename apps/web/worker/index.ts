@@ -93,7 +93,7 @@ export default {
         } catch(error) {return {league,events:[],error:error instanceof Error?error.message:'ESPN unavailable'};}
       }));
       const failed = responses.filter(item=>item.error);
-      if (failed.length===responses.length) return json({error:'Both ESPN scoreboards unavailable',sources:responses},502);
+      if (failed.length===responses.length) return json({error:'All ESPN scoreboards unavailable',sources:responses},502);
       return json({source:'ESPN public scoreboards',fetchedAt:new Date().toISOString(),date:day,sources:responses});
     }
     if (url.pathname === '/api/live-monitor/trajectory') {
