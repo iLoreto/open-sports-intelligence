@@ -20,7 +20,21 @@ const tickets=[
  {id:'vgk',name:'Vegas Golden Knights · Winner vs Nashville',stake:35,payout:58.33,sell:35,price:'60.0%'},
  {id:'nyr',name:'New York Rangers · Winner vs Vancouver',stake:30,payout:45.45,sell:29.54,price:'66.0%'}
 ];
-const money=x=>'
+const money=x=>'$'+Number(x).toFixed(2);
+
+function renderTickets(){
+ const root=$('ticket-list');root.replaceChildren();const active=tickets.filter(t=>!removed.includes(t.id));
+ for(const t of active){
+  const card=document.createElement('article');card.className='panel';
+  const title=document.createElement('h3');title.textContent=t.name+' · '+t.price;card.append(title);
+  const detail=document.createElement('p');detail.textContent='Stake '+money(t.stake)+' · Payout '+money(t.payout)+' · Potential profit '+money(t.payout-t.stake)+' · Sell snapshot '+money(t.sell);card.append(detail);
+  if(t.orders){const line=document.createElement('p');line.className='muted';line.textContent=t.orders.map(o=>o.price+' · '+money(o.stake)+' → '+money(o.payout)).join(' | ');card.append(line)}
+  const button=document.createElement('button');button.type='button';button.textContent='Remove ticket';button.setAttribute('aria-label','Remove '+t.name);button.addEventListener('click',()=>{removed.push(t.id);try{localStorage.setItem(ticketStoreKey,JSON.stringify(removed))}catch{}renderTickets()});card.append(button);root.append(card);
+ }
+ const stake=active.reduce((v,t)=>v+t.stake,0),payout=active.reduce((v,t)=>v+t.payout,0),sell=active.reduce((v,t)=>v+t.sell,0);
+ $('ticket-summary').textContent='Stake '+money(stake)+' · Payout '+money(payout)+' · Potential profit '+money(payout-stake)+' · Sell quotes at screenshot '+money(sell);
+}
+renderTickets();
 const n=v=>Number.isFinite(Number(v))?Number(v):0;
 function elapsed(p){const period=n(p.period?.number||p.period);const clock=p.clock?.displayValue||p.clock||'';const parts=String(clock).match(/^(\d+):(\d+)/);const remaining=parts?Number(parts[1])*60+Number(parts[2]):0;return Math.max(0,(period-1)*720+720-remaining)}
 function pointsFromPlay(p){const x=p.scoreValue??p.scoringPlay?.scoreValue;return Number.isFinite(Number(x))?Number(x):0}
@@ -63,20 +77,6 @@ async function refresh(){
  finally{loading=false;$('refresh').disabled=false}
 }
 $('refresh').addEventListener('click',refresh);setInterval(()=>{if(!document.hidden)refresh()},60000);refresh();
-</script></body></html>+x.toFixed(2);
-function renderTickets(){
- const root=$('ticket-list');root.replaceChildren();const active=tickets.filter(t=>!removed.includes(t.id));
- for(const t of active){
-  const card=document.createElement('article');card.className='panel';
-  const title=document.createElement('h3');title.textContent=t.name+' · '+t.price;card.append(title);
-  const detail=document.createElement('p');detail.textContent='Stake '+money(t.stake)+' · Payout '+money(t.payout)+' · Potential profit '+money(t.payout-t.stake)+' · Sell snapshot '+money(t.sell);card.append(detail);
-  if(t.orders){const line=document.createElement('p');line.className='muted';line.textContent=t.orders.map(o=>o.price+' · '+money(o.stake)+' → '+money(o.payout)).join(' | ');card.append(line)}
-  const button=document.createElement('button');button.type='button';button.textContent='Remove ticket';button.setAttribute('aria-label','Remove '+t.name);button.addEventListener('click',()=>{removed.push(t.id);try{localStorage.setItem(ticketStoreKey,JSON.stringify(removed))}catch{}renderTickets()});card.append(button);root.append(card);
- }
- const stake=active.reduce((v,t)=>v+t.stake,0),payout=active.reduce((v,t)=>v+t.payout,0),sell=active.reduce((v,t)=>v+t.sell,0);
- $('ticket-summary').textContent='Stake '+money(stake)+' · Payout '+money(payout)+' · Potential profit '+money(payout-stake)+' · Sell quotes at screenshot '+money(sell);
-}
-renderTickets();
 const n=v=>Number.isFinite(Number(v))?Number(v):0;
 function elapsed(p){const period=n(p.period?.number||p.period);const clock=p.clock?.displayValue||p.clock||'';const parts=String(clock).match(/^(\d+):(\d+)/);const remaining=parts?Number(parts[1])*60+Number(parts[2]):0;return Math.max(0,(period-1)*720+720-remaining)}
 function pointsFromPlay(p){const x=p.scoreValue??p.scoringPlay?.scoreValue;return Number.isFinite(Number(x))?Number(x):0}
