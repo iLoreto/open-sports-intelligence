@@ -216,7 +216,7 @@ const ocrInput=$('ticket-image'),ocrPreview=$('ocr-preview'),ocrStatus=$('ocr-st
 const abbreviations={THUNDER:'OKC',CLIPPERS:'LAC',PACERS:'IND',KNICKS:'NYK',LAKERS:'LAL',CELTICS:'BOS',WARRIORS:'GS',NUGGETS:'DEN',CAVALIERS:'CLE',MAVERICKS:'DAL',ROCKETS:'HOU',BUCKS:'MIL',SUNS:'PHX',TIMBERWOLVES:'MIN',GRIZZLIES:'MEM',SPURS:'SA',HEAT:'MIA',MAGIC:'ORL',BULLS:'CHI',HAWKS:'ATL',PISTONS:'DET',NETS:'BKN',KINGS:'SAC',JAZZ:'UTAH',RAPTORS:'TOR',SIXERS:'PHI',PELICANS:'NO',TRAILBLAZERS:'POR',WIZARDS:'WSH',GOLDENKNIGHTS:'VGK',PREDATORS:'NSH',RANGERS:'NYR',CANUCKS:'VAN'};
 function parseNovig(text){
  const upper=text.toUpperCase().replace(/[\u00a0\t]+/g,' ').replace(/[•·]/g,' ');
- if(!/NOVIG/.test(upper)||!/AMOUNT/.test(upper)||!/TO\s*PAY/.test(upper))throw Error('Not a recognized Novig shared ticket');
+ if(!/AMOUNT/.test(upper)||!/TO\s*PAY/.test(upper)||(!/NOVIG/.test(upper)&&!/REGULAR\s*TIME\s*3\s*[-–]?\s*WAY\s*WINNER/.test(upper)))throw Error('Not a recognized Novig shared ticket');
  // OCR reads Novig's two-column Amount / To Pay layout either by columns or by rows.
  const paired=upper.match(/AMOUNT\s+TO\s*PAY\s*\$?\s*([\d,]+\.\d{2})\s*\$?\s*([\d,]+\.\d{2})/);
  const amount=paired?[,paired[1]]:upper.match(/AMOUNT\s*\$?\s*([\d,]+\.\d{2})/);
@@ -261,7 +261,7 @@ function parseKalshi(text){
  return {platform:'kalshi',league:'mlb',home:'MIL',away:'LAD',pick:'MIL',stake,payout:total,entry:selection[1]};
 }
 function parseTicket(text){
- if(/NOVIG/i.test(text))return {platform:'novig',...parseNovig(text)};
+ if(/NOVIG/i.test(text)||(/AMOUNT/i.test(text)&&/TO\s*PAY/i.test(text)&&/REGULAR\s*TIME\s*3\s*[-–]?\s*WAY\s*WINNER/i.test(text)))return {platform:'novig',...parseNovig(text)};
  if(/KALSHI/i.test(text))return parseKalshi(text);
  throw Error('Unsupported shared ticket image');
 }
@@ -277,7 +277,23 @@ ocrInput.addEventListener('change',async()=>{
   blobUrl=URL.createObjectURL(file);
   worker=await Tesseract.createWorker('eng');
   const result=await worker.recognize(blobUrl);
-  const parsed=parseTicket(result.data.text||'');
+  let parsed;
+  try{parsed=parseTicket(result.data.text||'')}
+  catch(firstError){
+   // OCR can miss the Novig logo or flatten the small two-column ticket. Retry at 2x resolution.
+   const bitmap=await createImageBitmap(file);
+   try{
+    const canvas=document.createElement('canvas');
+    canvas.width=bitmap.width*2;canvas.height=bitmap.height*2;
+    const ctx=canvas.getContext('2d');
+    if(!ctx)throw firstError;
+    ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
+    ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);
+    const retry=await worker.recognize(canvas);
+    try{parsed=parseTicket(retry.data.text||'')}
+    catch(secondError){throw Error('OCR could not verify ticket fields after retry ('+secondError.message+'). Original: '+firstError.message)}
+   }finally{bitmap.close()}
+  }
   $('ocr-platform').value=parsed.platform;
   for(const field of ['away','home','pick','stake','payout','entry'])$('ocr-'+field).value=parsed[field];
   $('ocr-league').value=parsed.league||(['VGK','NSH','NYR','VAN'].some(t=>[parsed.home,parsed.away].includes(t))?'nhl':'nba');

@@ -34,3 +34,14 @@ test('Novig soccer share accepts actual image OCR layout', () => {
 test('reject incomplete image without financial values', () => {
  assert.throws(() => parse('NOVIG Austria Yes 62.0% Regular Time 3-Way Winner Amount To Pay IRL AUT'), /Stake or payout/);
 });
+
+test('OCR fallback accepts ticket when Novig logo is misread', () => {
+ const text = 'NJ N0V1G\nAustria Yes ° 62.0%\nRegular Time 3-Way Winner\nAmount To Pay\n$25.00 $40.32\nIRL 11:45 AM AUT';
+ const result = parse(text);
+ assert.equal(result.pick,'AUT');
+ assert.equal(result.stake,25);
+ assert.equal(result.payout,40.32);
+});
+test('OCR fallback still rejects non-Novig unrelated market', () => {
+ assert.throws(() => parse('OTHER PLATFORM\nAmount $25.00 To Pay $40.32\nIRL 11:45 AM AUT'), /recognized Novig/);
+});
