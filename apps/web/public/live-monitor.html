@@ -74,7 +74,13 @@ function render(){
   const amounts=document.createElement('p');const strong=document.createElement('strong');strong.textContent='Stake '+money(t.stake)+' · Payout '+money(t.payout)+' · Profit '+money(t.payout-t.stake);amounts.append(strong);info.append(amounts);
   const sell=document.createElement('p');sell.className='muted';sell.textContent='Sell snapshot '+money(t.sell);info.append(sell);
   if(t.orders){const orders=document.createElement('p');orders.className='muted';orders.textContent=t.orders.map(o=>o.price+' · '+money(o.stake)+' / '+money(o.payout)).join(' | ');info.append(orders)}
-  const button=document.createElement('button');button.className='secondary';button.textContent='Remove ticket';button.setAttribute('aria-label','Remove '+t.name);button.onclick=()=>{removed.push(t.id);try{localStorage.setItem(KEY,JSON.stringify(removed))}catch{}render()};info.append(button);
+  const button=document.createElement('button');button.className='secondary';button.type='button';button.textContent='🗑️';button.title='Delete ticket';button.setAttribute('aria-label','Delete '+t.name);button.onclick=()=>{
+   const password=window.prompt('Enter deletion password to remove this ticket');
+   if(password===null)return;
+   if(password!=='XTBY'){window.alert('Incorrect password. Ticket was not removed.');return}
+   if(!window.confirm('Delete '+t.name+' from this monitor?'))return;
+   removed.push(t.id);try{localStorage.setItem(KEY,JSON.stringify(removed))}catch{}render()
+  };info.append(button);
   card.append(info);root.append(card);
  }
 }

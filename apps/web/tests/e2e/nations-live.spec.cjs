@@ -34,10 +34,21 @@ test('league filter switches category without navigation or losing tickets',asyn
  await page.locator('#league').selectOption('all');
  await expect(page.locator('#matches article')).toHaveCount(3);
 });
-test('remove ticket updates totals and survives reload',async({page})=>{
+test('trash icon requires exact password and confirmation before removal',async({page})=>{
  await page.goto(url);await expect(page.locator('#stake')).toHaveText('$119.56');
- await page.getByRole('button',{name:/Remove New York Rangers/}).click();
- await expect(page.locator('#stake')).toHaveText('$89.56');
+ const trash=page.getByRole('button',{name:/Delete New York Rangers/});
+ async function attempt(password,confirmDelete){
+  const handler=async dialog=>{
+   if(dialog.type()==='prompt')await (password===null?dialog.dismiss():dialog.accept(password));
+   else if(dialog.type()==='alert')await dialog.accept();
+   else if(dialog.type()==='confirm')await (confirmDelete?dialog.accept():dialog.dismiss());
+  };
+  page.on('dialog',handler);try{await trash.click()}finally{page.off('dialog',handler)}
+ }
+ await attempt(null,false);await expect(page.locator('#stake')).toHaveText('$119.56');
+ await attempt('xtby',true);await expect(page.locator('#stake')).toHaveText('$119.56');
+ await attempt('XTBY',false);await expect(page.locator('#stake')).toHaveText('$119.56');
+ await attempt('XTBY',true);await expect(page.locator('#stake')).toHaveText('$89.56');
  await page.reload();await expect(page.locator('#matches article')).toHaveCount(2);
  await expect(page.locator('#stake')).toHaveText('$89.56');
 });
