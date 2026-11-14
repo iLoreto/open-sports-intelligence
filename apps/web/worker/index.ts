@@ -280,14 +280,14 @@ export default {
             allSources.push({ market, event: event.title || event.event_ticker });
           }
         }
+        // Include qualifying team-outcome contracts for every league, not only when
+        // the entire multi-league scan has zero strict matches. Deduplication keeps
+        // a market found by both passes from appearing twice.
         for (const source of allSources) addMarket(source.market, source.event, 'strict');
-        if (markets.length === 0) {
-          seen.clear();
-          for (const source of allSources) addMarket(source.market, source.event, 'fallback');
-        }
+        for (const source of allSources) addMarket(source.market, source.event, 'fallback');
         scanSignal.throwIfAborted();
         markets.sort((a, b) => a.askCents - b.askCents || a.event.localeCompare(b.event));
-        const modeNote = markets.length ? 'Results prioritize moneyline contracts and may fall back to team-outcome contracts when no moneyline matches are found for the selected league.' : 'No contracts matched the selected league and range in this snapshot.';
+        const modeNote = markets.length ? 'Results include game moneyline and plain team-outcome contracts, deduplicated across both matching rules.' : 'No eligible game contracts found in the scanned portion of the feed.';
         return { source: 'Kalshi public API', provider, scannedAt: new Date().toISOString(),
           sportsEvents, pagesScanned, nestedMarkets, quotedMarkets, fetchedMarkets: results.reduce((n, group) => n + group.length, 0), marketPagesScanned, rateLimited, markets, partialCoverage: Boolean(cursor || marketCursor || rateLimited),
           note: 'Sports-only, on-demand scan. ' + modeNote + ' Quotes are displayed by contract side (YES/NO) at the current ask. Up to twenty event pages and ten market pages are checked. Coverage is partial when additional pages exist or rate limiting occurs.' };
