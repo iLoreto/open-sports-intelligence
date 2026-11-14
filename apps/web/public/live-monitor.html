@@ -43,13 +43,24 @@ function gameFor(t){return scores.find(e=>{
 })}
 function statValue(c,aliases){const a=(c?.statistics||[]).find(x=>aliases.includes(String(x.name||x.abbreviation||x.displayName||'').toLowerCase().replace(/[^a-z]/g,'')));return a?.displayValue??a?.value??null}
 function statTile(label,a,b){const el=document.createElement('div');el.className='stat';const title=document.createElement('small');title.textContent=label;const value=document.createElement('b');value.textContent=clean(a)+' / '+clean(b);el.append(title,value);return el}
-function progression(plays,league){
+function progression(plays,league,event){
+ const competitors=event?.competitions?.[0]?.competitors||[];
+ const homeId=String(competitors.find(c=>c.homeAway==='home')?.team?.id||'');
+ const awayId=String(competitors.find(c=>c.homeAway==='away')?.team?.id||'');
+ let goalsHome=0,goalsAway=0;
  const result=[{x:0,home:0,away:0}],periodLength=league==='nba'?12:20;
  for(const play of plays){
   const p=Number(play.period?.number??play.period);
   const clock=String(play.clock?.displayValue??play.clock??'');
   const m=clock.match(/^([0-9]+):([0-9]+)/);
-  const home=Number(play.homeScore),away=Number(play.awayScore);
+  let home=play.homeScore==null?NaN:Number(play.homeScore),away=play.awayScore==null?NaN:Number(play.awayScore);
+  if(league==='nhl'&&(!Number.isFinite(home)||!Number.isFinite(away))){
+   const id=String(play.team?.id||play.teamId||'');
+   const isGoal=play.scoringPlay===true||/goal/i.test(String(play.type?.text||play.type?.name||play.text||''));
+   if(!isGoal||!id||(!homeId&&!awayId))continue;
+   if(id===homeId)goalsHome++;else if(id===awayId)goalsAway++;else continue;
+   home=goalsHome;away=goalsAway;
+  }
   if(!Number.isFinite(home)||!Number.isFinite(away)||home<0||away<0||!Number.isFinite(p)||p<1)continue;
   const elapsed=m?(p-1)*periodLength+(periodLength-(Number(m[1])+Number(m[2])/60)):(p-1)*periodLength;
   result.push({x:Math.max(0,elapsed),home,away});
@@ -72,7 +83,7 @@ function trajectoryCard(e,t){
  const heading=document.createElement('h4');heading.textContent='Game trajectory · '+t.league.toUpperCase();wrapper.append(heading);
  const data=trajectories.get(t.league+':'+e.id);
  if(!data){const msg=document.createElement('p');msg.className='muted';msg.textContent='Loading ESPN scoring progression…';wrapper.append(msg);return wrapper}
- const points=progression(data.plays||[],t.league);
+ const points=progression(data.plays||[],t.league,e);
  if(!points.length){const msg=document.createElement('p');msg.className='muted';msg.textContent=data.error?'Trajectory unavailable: '+data.error:'ESPN has no scored play-by-play checkpoints for this game';wrapper.append(msg);return wrapper}
  const key=document.createElement('p');key.className='key';key.textContent='Blue: '+t.away+' · Green: '+t.home+' · Orange: '+t.home+' lead';wrapper.append(key);
  for(const [title,mode] of [['Cumulative scoring','totals'],['Lead momentum','margin']]){
