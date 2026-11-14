@@ -87,3 +87,5 @@ test('missing play-by-play reports unavailable instead of inventing charts',asyn
  await expect(page.locator('.trajectory svg')).toHaveCount(0);
  await expect(page.locator('.trajectory').first()).toContainText('no scored play-by-play checkpoints');
 });
+
+test('live monitor has back navigation',async({page})=>{await page.goto(url);await expect(page.getByRole('link',{name:/Back to Sports Radar/})).toHaveAttribute('href','/');});
