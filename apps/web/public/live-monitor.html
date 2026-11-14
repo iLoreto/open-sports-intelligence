@@ -4,14 +4,14 @@
 :root{color-scheme:dark;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;background:#07111e;color:#e8f0fc}*{box-sizing:border-box}body{margin:0}main{max-width:1180px;margin:auto;padding:20px}header,.toolbar,.match-head,.scoreline,.ticket-top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}h1{margin:6px 0;font-size:clamp(25px,4vw,36px)}h2{margin:0 0 13px;font-size:19px}h3{margin:0;font-size:17px}.muted,small{color:#a5bad2}.eyebrow{color:#8cd4ff;font-size:11px;font-weight:800;letter-spacing:.12em}.layout{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:22px 0}.metric,.panel,.match{background:#101e30;border:1px solid #263d56;border-radius:16px;padding:17px}.metric strong{display:block;font-size:26px;margin-top:8px;font-variant-numeric:tabular-nums}.panel{margin:18px 0}.matches{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.match{padding:18px;min-width:0}.match-head{margin-bottom:14px}.pill{font-size:11px;font-weight:800;border-radius:25px;background:#273b50;color:#cfe0f6;padding:6px 10px}.pill.live{background:#5b3220;color:#ffcf9c}.pill.final{background:#23513e;color:#b3ffd2}.teams{display:grid;grid-template-columns:1fr auto;gap:9px;align-items:center}.team{display:flex;align-items:center;gap:9px;font-weight:750;margin:9px 0}.team img{width:29px;height:29px;object-fit:contain}.points{font-size:30px;font-weight:850;font-variant-numeric:tabular-nums;text-align:right}.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:15px}.stat{background:#172b43;border-radius:9px;padding:10px 8px;min-width:0}.stat b{display:block;font-size:16px;margin-top:4px;overflow-wrap:anywhere}.trajectory{margin-top:16px;padding:12px;background:#0b1829;border:1px solid #2a4058;border-radius:12px}.trajectory h4{font-size:13px;margin:5px 0 10px}.trajectory svg{width:100%;height:auto;display:block;overflow:visible}.trajectory .key{font-size:11px;color:#9fb8d2}.trajectory .key span{margin-right:14px}.trajectory .key b{font-size:14px}.ticket-info{border-top:1px solid #2a4058;margin-top:14px;padding-top:13px}.ticket-info strong{color:#8df1bc}.ticket-info p{margin:8px 0;font-size:13px}.toolbar{justify-content:flex-start}button,select{background:#17568c;border:1px solid #6292b9;color:white;border-radius:9px;padding:9px 13px;font:inherit;cursor:pointer}select{background:#172b43}.secondary{background:transparent}.warning{color:#ffca8e}.good{color:#8df1bc}.error{color:#ff9a9a}.footer{font-size:12px;line-height:1.6;color:#9aacc2;margin:24px 0}a{color:#81d8ff}.empty{border:1px dashed #37516b;border-radius:12px;padding:20px;color:#afc2d7}.scoreline{align-items:baseline}#score-status{min-height:20px}@media(max-width:850px){.matches{grid-template-columns:1fr}.layout{grid-template-columns:repeat(2,1fr)}}@media(max-width:520px){main{padding:12px}.metric,.match,.panel{padding:13px}.layout{gap:8px}.metric strong{font-size:21px}.stats{gap:5px}.stat{padding:8px 6px}.points{font-size:26px}}
 </style></head><body><main>
 <nav aria-label="Monitor navigation" style="margin-bottom:16px"><a href="/" class="secondary" style="display:inline-block;padding:10px 15px;border:1px solid #6292b9;border-radius:9px;text-decoration:none">← Back to Sports Radar</a></nav>
-<header><div><div class="eyebrow">iLORETO DEVELOPMENT · SPORTS RADAR</div><h1>Live Ticket Monitor</h1><div class="muted">NBA + NHL · ESPN game windows · Novig ticket snapshot</div></div><div class="toolbar"><button id="refresh">Refresh ESPN scores</button><span class="muted" id="score-status" role="status">Loading ESPN…</span></div></header>
-<section class="panel" aria-label="Import shared ticket image"><div class="toolbar"><h2 style="flex:1;margin:0">Import Novig ticket</h2><label for="ticket-image" style="background:#17568c;border:1px solid #6292b9;border-radius:9px;padding:9px 13px;cursor:pointer">Select shared image</label><input id="ticket-image" type="file" accept="image/*" style="position:absolute;width:1px;height:1px;opacity:0" aria-label="Shared ticket image"></div><p id="ocr-status" class="muted" role="status">Image is processed locally and discarded after OCR. Only confirmed ticket fields are saved.</p><form id="ocr-preview" hidden><div class="toolbar"><label>Platform <select id="ocr-platform"><option value="novig">Novig</option><option value="kalshi">Kalshi</option></select></label><label>League <select id="ocr-league"><option value="nba">NBA</option><option value="nhl">NHL</option><option value="mlb">MLB</option></select></label><label>Away <input id="ocr-away" required maxlength="5" placeholder="LAC"></label><label>Home <input id="ocr-home" required maxlength="5" placeholder="OKC"></label><label>Pick <input id="ocr-pick" required maxlength="5" placeholder="OKC"></label><label>Stake <input id="ocr-stake" type="number" step=".01" min=".01" required></label><label>Payout <input id="ocr-payout" type="number" step=".01" min=".01" required></label><label>Entry % <input id="ocr-entry" type="number" min="1" max="99.99" step=".01"></label><button type="submit">Add verified ticket</button><button type="button" id="ocr-cancel" class="secondary">Cancel</button></div></form></section><section class="layout" aria-label="Ticket overview" role="region">
+<header><div><div class="eyebrow">iLORETO DEVELOPMENT · SPORTS RADAR</div><h1>Live Ticket Monitor</h1><div class="muted">NBA + NHL + Soccer · ESPN game windows · Shared ticket images</div></div><div class="toolbar"><button id="refresh">Refresh ESPN scores</button><span class="muted" id="score-status" role="status">Loading ESPN…</span></div></header>
+<section class="panel" aria-label="Import shared ticket image"><div class="toolbar"><h2 style="flex:1;margin:0">Import Novig ticket</h2><label for="ticket-image" style="background:#17568c;border:1px solid #6292b9;border-radius:9px;padding:9px 13px;cursor:pointer">Select shared image</label><input id="ticket-image" type="file" accept="image/*" style="position:absolute;width:1px;height:1px;opacity:0" aria-label="Shared ticket image"></div><p id="ocr-status" class="muted" role="status">Image is processed locally and discarded after OCR. Only confirmed ticket fields are saved.</p><form id="ocr-preview" hidden><div class="toolbar"><label>Platform <select id="ocr-platform"><option value="novig">Novig</option><option value="kalshi">Kalshi</option></select></label><label>League <select id="ocr-league"><option value="nba">NBA</option><option value="nhl">NHL</option><option value="mlb">MLB</option><option value="soccer">Soccer</option></select></label><label>Away <input id="ocr-away" required maxlength="32" placeholder="IRL"></label><label>Home <input id="ocr-home" required maxlength="32" placeholder="AUT"></label><label>Pick <input id="ocr-pick" required maxlength="32" placeholder="AUT"></label><label>Stake <input id="ocr-stake" type="number" step=".01" min=".01" required></label><label>Payout <input id="ocr-payout" type="number" step=".01" min=".01" required></label><label>Entry % <input id="ocr-entry" type="number" min="1" max="99.99" step=".01"></label><button type="submit">Add verified ticket</button><button type="button" id="ocr-cancel" class="secondary">Cancel</button></div></form></section><section class="layout" aria-label="Ticket overview" role="region">
 <div class="metric"><small>Stake</small><strong id="stake">$119.56</strong></div>
 <div class="metric"><small>Payout</small><strong id="payout">$205.84</strong></div>
 <div class="metric"><small>Potential profit</small><strong id="profit">$86.28</strong></div>
 
 </section>
-<section class="panel"><div class="toolbar"><label>League <select id="league"><option value="all">All tickets</option><option value="nba">NBA</option><option value="nhl">NHL</option><option value="mlb">MLB</option></select></label></div><div class="matches" id="matches"></div></section>
+<section class="panel"><div class="toolbar"><label>League <select id="league"><option value="all">All tickets</option><option value="nba">NBA</option><option value="nhl">NHL</option><option value="mlb">MLB</option><option value="soccer">Soccer</option></select></label></div><div class="matches" id="matches"></div></section>
 <p class="footer">ESPN scores and game statistics refresh every 60 seconds while visible. Ticket stakes and payouts are from shared images, not live Novig quotes. Remove affects this browser's monitor only. <a href="/">Sports Radar home</a>.</p>
 </main><script>
 'use strict';
@@ -23,7 +23,7 @@ const tickets=[
 {id:'vgk',league:'nhl',home:'VGK',away:'NSH',pick:'VGK',name:'Vegas Golden Knights · Winner vs Nashville',stake:35,payout:58.33,sell:35,entry:'60.0%'},
 {id:'nyr',league:'nhl',home:'NYR',away:'VAN',pick:'NYR',name:'New York Rangers · Winner vs Vancouver',stake:30,payout:45.45,sell:29.54,entry:'66.0%'}
 ];
-try{const imports=JSON.parse(localStorage.getItem(IMPORT_KEY)||'[]');if(Array.isArray(imports))for(const t of imports)if(t&&typeof t.id==='string'&&['nba','nhl','mlb'].includes(t.league)&&Number.isFinite(t.stake)&&Number.isFinite(t.payout))tickets.push(t)}catch{}
+try{const imports=JSON.parse(localStorage.getItem(IMPORT_KEY)||'[]');if(Array.isArray(imports))for(const t of imports)if(t&&typeof t.id==='string'&&['nba','nhl','mlb','soccer'].includes(t.league)&&Number.isFinite(t.stake)&&Number.isFinite(t.payout))tickets.push(t)}catch{}
 let removed=[];try{const a=JSON.parse(localStorage.getItem(KEY)||localStorage.getItem(LEGACY)||'[]');if(Array.isArray(a))removed=a}catch{}
 let scores=[],sources=[],fetchedAt='';const trajectories=new Map();
 function clean(v){return String(v??'—')}
@@ -161,7 +161,7 @@ function trajectoryCard(e,t){
  return wrapper;
 }
 async function loadTrajectories(){
- const games=[...new Map(tickets.filter(t=>!removed.includes(t.id)).map(t=>[t.id,{t,e:gameFor(t)}]).filter(x=>x[1].e?.id).map(([id,item])=>[item.t.league+':'+item.e.id,item])).values()];
+ const games=[...new Map(tickets.filter(t=>!removed.includes(t.id)&&['nba','nhl'].includes(t.league)).map(t=>[t.id,{t,e:gameFor(t)}]).filter(x=>x[1].e?.id).map(([id,item])=>[item.t.league+':'+item.e.id,item])).values()];
  await Promise.all(games.map(async({t,e})=>{
   const key=t.league+':'+e.id;
   try{const response=await fetch('/api/live-monitor/trajectory?league='+t.league+'&event='+encodeURIComponent(e.id),{cache:'no-store',signal:AbortSignal.timeout(15000)});const data=await response.json();trajectories.set(key,response.ok?data:{error:data.error||'ESPN unavailable'})}
@@ -191,10 +191,10 @@ function render(){
   line.append(names,points);card.append(line);
   const clock=document.createElement('p');clock.className='muted';clock.textContent=e?statusText(e):'ESPN game not matched for this date';card.append(clock);
   if(e){const stats=document.createElement('div');stats.className='stats';
-   const fields=t.league==='nba'?[['FG %',['fieldgoalpct','fieldgoalpercentage']],['Rebounds',['totalrebounds','rebounds']],['Assists',['assists']],['3PT %',['threepointfieldgoalpct','threepointfieldgoalpercentage']],['Turnovers',['turnovers']],['Fouls',['fouls','totalfouls']]]:[['Shots',['shotsongoal','shots','sog','totalshotsongoal','shotsongoalfor']],['Power play',['powerplaygoals','powerplaygoalsattempts','powerplayopportunities','powerplaychances','powerplays','powerplaygoalsfor']],['Hits',['hits']],['Faceoff %',['faceoffpercent','faceoffpct']],['Blocked shots',['blockedshots']],['Penalty min',['penaltyminutes']]];
+   const fields=t.league==='soccer'?[]:t.league==='nba'?[['FG %',['fieldgoalpct','fieldgoalpercentage']],['Rebounds',['totalrebounds','rebounds']],['Assists',['assists']],['3PT %',['threepointfieldgoalpct','threepointfieldgoalpercentage']],['Turnovers',['turnovers']],['Fouls',['fouls','totalfouls']]]:[['Shots',['shotsongoal','shots','sog','totalshotsongoal','shotsongoalfor']],['Power play',['powerplaygoals','powerplaygoalsattempts','powerplayopportunities','powerplaychances','powerplays','powerplaygoalsfor']],['Hits',['hits']],['Faceoff %',['faceoffpercent','faceoffpct']],['Blocked shots',['blockedshots']],['Penalty min',['penaltyminutes']]];
    for(const [label,aliases] of fields){const pregame=state(e)==='Scheduled';stats.append(statTile(label,pregame?'0':nhlStat(t,e,t.away,aliases),pregame?'0':nhlStat(t,e,t.home,aliases)))}
    card.append(stats);
-   card.append(trajectoryCard(e,t));
+   if(t.league!=='soccer')card.append(trajectoryCard(e,t));
   }
   const info=document.createElement('div');info.className='ticket-info';
   const selection=document.createElement('p');selection.textContent='Selection: '+t.name+' · Entry '+t.entry;info.append(selection);
@@ -215,22 +215,35 @@ function render(){
 const ocrInput=$('ticket-image'),ocrPreview=$('ocr-preview'),ocrStatus=$('ocr-status');
 const abbreviations={THUNDER:'OKC',CLIPPERS:'LAC',PACERS:'IND',KNICKS:'NYK',LAKERS:'LAL',CELTICS:'BOS',WARRIORS:'GS',NUGGETS:'DEN',CAVALIERS:'CLE',MAVERICKS:'DAL',ROCKETS:'HOU',BUCKS:'MIL',SUNS:'PHX',TIMBERWOLVES:'MIN',GRIZZLIES:'MEM',SPURS:'SA',HEAT:'MIA',MAGIC:'ORL',BULLS:'CHI',HAWKS:'ATL',PISTONS:'DET',NETS:'BKN',KINGS:'SAC',JAZZ:'UTAH',RAPTORS:'TOR',SIXERS:'PHI',PELICANS:'NO',TRAILBLAZERS:'POR',WIZARDS:'WSH',GOLDENKNIGHTS:'VGK',PREDATORS:'NSH',RANGERS:'NYR',CANUCKS:'VAN'};
 function parseNovig(text){
- const upper=text.toUpperCase();
- if(!/NOVIG/.test(upper)||!/MATCHED/.test(upper)||!/WINNER/.test(upper)||!/AMOUNT/.test(upper)||!/TO\s*PAY/.test(upper))throw Error('Not a recognized matched Novig winner ticket');
- const moneyPattern='\\$?\\s*([\\d,]+\\.\\d{2})';
- const amount=upper.match(new RegExp('AMOUNT\\s*'+moneyPattern,'i'));
- const pay=upper.match(new RegExp('TO\\s*PAY\\s*'+moneyPattern,'i'));
- const selected=upper.match(/\b([A-Z]{2,5})\s*[•·.]?\s*(\d{1,2}(?:\.\d+)?)\s*%\s*WINNER/);
- const known=new Set(['OKC','LAC','MEM','NOP','IND','NYK','LAL','BOS','GS','DEN','CLE','DAL','HOU','MIL','PHX','MIN','SA','MIA','ORL','CHI','ATL','DET','BKN','SAC','UTAH','TOR','PHI','NO','POR','WSH','VGK','NSH','NYR','VAN']);
- const pick=selected?.[1],entry=selected?.[2];
- // Ticket matchup appears below the financial amounts. Do not infer home/away from OCR text order.
- const afterPay=upper.slice(pay?.index??0).split(/PLACED|LIVE TAKE ORDER POINTS/)[0];
- const matches=[...afterPay.matchAll(/\b([A-Z]{2,5})\b/g)].map(m=>m[1]).filter(code=>known.has(code));
- const opponents=[...new Set(matches)].filter(code=>code!==pick);
- if(!amount||!pay||!known.has(pick)||opponents.length!==1)throw Error('Required Novig fields could not be verified');
+ const upper=text.toUpperCase().replace(/[\u00a0\t]+/g,' ').replace(/[•·]/g,' ');
+ if(!/NOVIG/.test(upper)||!/MATCHED/.test(upper)||!/AMOUNT/.test(upper)||!/TO\s*PAY/.test(upper))throw Error('Not a recognized matched Novig shared ticket');
+ const amount=upper.match(/AMOUNT\s*\$?\s*([\d,]+\.\d{2})/);
+ const pay=upper.match(/TO\s*PAY\s*\$?\s*([\d,]+\.\d{2})/);
+ if(!amount||!pay)throw Error('Stake or payout could not be verified');
  const stake=Number(amount[1].replaceAll(',','')),payout=Number(pay[1].replaceAll(',',''));
  if(!Number.isFinite(stake)||!Number.isFinite(payout)||stake<=0||payout<=0)throw Error('Invalid ticket amounts');
- return {away:opponents[0],home:pick,pick,stake,payout,entry};
+ // Novig soccer share images use "Austria Yes 62.0%" rather than "AUT 62% Winner".
+ const soccer=/REGULAR\s*TIME\s*3\s*[-–]?\s*WAY\s*WINNER/.test(upper);
+ if(soccer){
+  const countries={AUSTRIA:'AUT',IRELAND:'IRL',PORTUGAL:'POR',NORTHERNIRELAND:'NIR',ENGLAND:'ENG',SCOTLAND:'SCO',WALES:'WAL',FRANCE:'FRA',ITALY:'ITA',SPAIN:'ESP',GERMANY:'GER',NETHERLANDS:'NED',NORWAY:'NOR',SWITZERLAND:'SUI',CROATIA:'CRO',FINLAND:'FIN',ALBANIA:'ALB',BELGIUM:'BEL',DENMARK:'DEN',SWEDEN:'SWE',POLAND:'POL',TURKEY:'TUR',UKRAINE:'UKR',GREECE:'GRE',SERBIA:'SRB',CZECHIA:'CZE',SLOVAKIA:'SVK',HUNGARY:'HUN',ROMANIA:'ROU'};
+  const normalize=v=>v.replace(/[^A-Z]/g,'');
+  const selection=upper.match(/([A-Z][A-Z ]{1,35}?)\s+YES\s+(\d{1,2}(?:\.\d+)?)\s*%/);
+  const pick=selection&&countries[normalize(selection[1].trim())];
+  const afterPay=upper.slice(pay.index+pay[0].length).split(/PLACED\s*:/)[0];
+  const matchup=afterPay.match(/\b([A-Z]{3})\s+(?:\d{1,2}:\d{2}\s*(?:AM|PM)?\s*(?:TODAY|TOMORROW)?\s*)?([A-Z]{3})\b/);
+  const teams=matchup?[matchup[1],matchup[2]]:[...afterPay.matchAll(/\b[A-Z]{3}\b/g)].map(m=>m[0]).filter(code=>Object.values(countries).includes(code));
+  if(!pick||teams.length<2||!teams.includes(pick)||teams[0]===teams[1])throw Error('Soccer selection or matchup could not be verified');
+  return {platform:'novig',league:'soccer',away:teams[0],home:teams[1],pick,stake,payout,entry:selection[2],market:'Regular Time 3-Way Winner'};
+ }
+ if(!/WINNER/.test(upper))throw Error('Unrecognized Novig market');
+ const selected=upper.match(/\b([A-Z]{2,5})\s*(\d{1,2}(?:\.\d+)?)\s*%\s*WINNER/);
+ const known=new Set(['OKC','LAC','MEM','NOP','IND','NYK','LAL','BOS','GS','DEN','CLE','DAL','HOU','MIL','PHX','MIN','SA','MIA','ORL','CHI','ATL','DET','BKN','SAC','UTAH','TOR','PHI','NO','POR','WSH','VGK','NSH','NYR','VAN']);
+ const pick=selected?.[1],entry=selected?.[2];
+ const afterPay=upper.slice(pay.index).split(/PLACED|LIVE TAKE ORDER POINTS/)[0];
+ const matches=[...afterPay.matchAll(/\b([A-Z]{2,5})\b/g)].map(m=>m[1]).filter(code=>known.has(code));
+ const opponents=[...new Set(matches)].filter(code=>code!==pick);
+ if(!known.has(pick)||opponents.length!==1)throw Error('Required Novig fields could not be verified');
+ return {platform:'novig',away:opponents[0],home:pick,pick,stake,payout,entry};
 }
 function parseKalshi(text){
  const upper=text.toUpperCase().replace(/\s+/g,' ');
@@ -252,7 +265,7 @@ function parseTicket(text){
 }
 ocrInput.addEventListener('change',async()=>{
  const file=ocrInput.files?.[0];if(!file)return;
- ocrPreview.hidden=true;ocrStatus.textContent='Reading screenshot locally…';
+ ocrPreview.hidden=true;ocrStatus.textContent='Reading shared image locally…';
  let worker=null,blobUrl=null;
  try{
   if(!file.type.startsWith('image/')||file.size>12*1024*1024)throw Error('Select an image under 12 MB');
@@ -266,8 +279,8 @@ ocrInput.addEventListener('change',async()=>{
   $('ocr-platform').value=parsed.platform;
   for(const field of ['away','home','pick','stake','payout','entry'])$('ocr-'+field).value=parsed[field];
   $('ocr-league').value=parsed.league||(['VGK','NSH','NYR','VAN'].some(t=>[parsed.home,parsed.away].includes(t))?'nhl':'nba');
-  ocrPreview.hidden=false;ocrStatus.textContent='Review the extracted fields before adding. The screenshot is not saved.';
- }catch(error){ocrStatus.textContent='OCR failed: '+error.message+'. Select another screenshot.'}
+  ocrPreview.hidden=false;ocrStatus.textContent='Review the extracted fields before adding. The shared image is not saved.';
+ }catch(error){ocrStatus.textContent='Import failed: '+error.message+'. Verify that this is an official shared ticket image.'}
  finally{if(worker)await worker.terminate();if(blobUrl)URL.revokeObjectURL(blobUrl);ocrInput.value='';}
 });
 $('ocr-cancel').onclick=()=>{ocrPreview.hidden=true;ocrStatus.textContent='Import cancelled; no ticket saved.'};
@@ -282,13 +295,13 @@ ocrPreview.addEventListener('submit',event=>{
  const ticket={id:'ocr-'+crypto.randomUUID(),platform,league,home,away,pick,name:pick+' · Winner vs '+(pick===home?away:home),stake,payout,entry:entry?entry+'%':'unavailable'};
  tickets.push(ticket);
  try{localStorage.setItem(IMPORT_KEY,JSON.stringify(tickets.filter(t=>t.id.startsWith('ocr-'))))}catch{tickets.pop();ocrStatus.textContent='Could not save ticket locally; storage unavailable.';return}
- ocrPreview.hidden=true;ocrStatus.textContent='Ticket added. Screenshot discarded.';render();loadTrajectories();
+ ocrPreview.hidden=true;ocrStatus.textContent='Ticket added. Shared image discarded.';render();loadTrajectories();
 });
 let busy=false;
 async function refresh(){
  if(busy)return;busy=true;$('refresh').disabled=true;$('score-status').textContent='Updating ESPN…';
  try{
-  const response=await fetch('/api/live-monitor/scores?date=20261113',{cache:'no-store',signal:AbortSignal.timeout(15000)});
+  const response=await fetch('/api/live-monitor/scores?date='+new Date().toLocaleDateString('en-CA',{timeZone:'America/Los_Angeles'}).replaceAll('-','')+'',{cache:'no-store',signal:AbortSignal.timeout(15000)});
   const data=await response.json();if(!response.ok)throw Error(data.error||'ESPN HTTP '+response.status);
   sources=data.sources||[];scores=sources.flatMap(s=>(s.events||[]).map(e=>({...e,_league:s.league})));fetchedAt=data.fetchedAt||'';
   const failures=sources.filter(s=>s.error).map(s=>s.league.toUpperCase()+': '+s.error);
