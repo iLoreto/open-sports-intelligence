@@ -37,14 +37,18 @@ test('league filter switches category without navigation or losing tickets',asyn
 test('trash icon requires exact password and confirmation before removal',async({page})=>{
  await page.goto(url);await expect(page.locator('#stake')).toHaveText('$119.56');
  const trash=page.getByRole('button',{name:/Delete New York Rangers/});
- page.once('dialog',dialog=>dialog.dismiss());await trash.click();
- await expect(page.locator('#stake')).toHaveText('$119.56');
- page.once('dialog',dialog=>dialog.accept('xtby'));await trash.click();
- page.once('dialog',dialog=>dialog.accept());await expect(page.locator('#stake')).toHaveText('$119.56');
- page.once('dialog',dialog=>dialog.accept('XTBY'));await trash.click();
- page.once('dialog',dialog=>dialog.dismiss());await expect(page.locator('#stake')).toHaveText('$119.56');
- page.once('dialog',dialog=>dialog.accept('XTBY'));await trash.click();
- page.once('dialog',dialog=>dialog.accept());await expect(page.locator('#stake')).toHaveText('$89.56');
+ async function attempt(password,confirmDelete){
+  const handler=async dialog=>{
+   if(dialog.type()==='prompt')await (password===null?dialog.dismiss():dialog.accept(password));
+   else if(dialog.type()==='alert')await dialog.accept();
+   else if(dialog.type()==='confirm')await (confirmDelete?dialog.accept():dialog.dismiss());
+  };
+  page.on('dialog',handler);try{await trash.click()}finally{page.off('dialog',handler)}
+ }
+ await attempt(null,false);await expect(page.locator('#stake')).toHaveText('$119.56');
+ await attempt('xtby',true);await expect(page.locator('#stake')).toHaveText('$119.56');
+ await attempt('XTBY',false);await expect(page.locator('#stake')).toHaveText('$119.56');
+ await attempt('XTBY',true);await expect(page.locator('#stake')).toHaveText('$89.56');
  await page.reload();await expect(page.locator('#matches article')).toHaveCount(2);
  await expect(page.locator('#stake')).toHaveText('$89.56');
 });
