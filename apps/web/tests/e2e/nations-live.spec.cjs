@@ -31,3 +31,21 @@ test('API failure is clearly identified without fabricated momentum',async({page
  await page.goto(url);await expect(page.getByRole('status')).toContainText('Data unavailable');
  await expect(page.locator('#margin polyline')).toHaveCount(0);
 });
+
+test('shows all screenshot tickets and reconciles totals',async({page})=>{
+ await page.goto(url);
+ const overview=page.getByRole('region',{name:'Ticket overview'});
+ await expect(overview).toContainText('$119.56');
+ await expect(overview).toContainText('$205.84');
+ await expect(overview).toContainText('$86.28');
+ await expect(page.locator('#ticket-list')).toContainText('Indiana Pacers');
+ await expect(page.locator('#ticket-list')).toContainText('Vegas Golden Knights');
+ await expect(page.locator('#ticket-list')).toContainText('New York Rangers');
+});
+test('removing a ticket changes monitor totals persistently',async({page})=>{
+ await page.goto(url);
+ await page.getByRole('button',{name:/Remove New York Rangers/}).click();
+ await expect(page.getByRole('region',{name:'Ticket overview'})).toContainText('$89.56');
+ await page.reload();
+ await expect(page.getByRole('region',{name:'Ticket overview'})).toContainText('$89.56');
+});
