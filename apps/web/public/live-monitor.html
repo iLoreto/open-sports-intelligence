@@ -216,9 +216,11 @@ const ocrInput=$('ticket-image'),ocrPreview=$('ocr-preview'),ocrStatus=$('ocr-st
 const abbreviations={THUNDER:'OKC',CLIPPERS:'LAC',PACERS:'IND',KNICKS:'NYK',LAKERS:'LAL',CELTICS:'BOS',WARRIORS:'GS',NUGGETS:'DEN',CAVALIERS:'CLE',MAVERICKS:'DAL',ROCKETS:'HOU',BUCKS:'MIL',SUNS:'PHX',TIMBERWOLVES:'MIN',GRIZZLIES:'MEM',SPURS:'SA',HEAT:'MIA',MAGIC:'ORL',BULLS:'CHI',HAWKS:'ATL',PISTONS:'DET',NETS:'BKN',KINGS:'SAC',JAZZ:'UTAH',RAPTORS:'TOR',SIXERS:'PHI',PELICANS:'NO',TRAILBLAZERS:'POR',WIZARDS:'WSH',GOLDENKNIGHTS:'VGK',PREDATORS:'NSH',RANGERS:'NYR',CANUCKS:'VAN'};
 function parseNovig(text){
  const upper=text.toUpperCase().replace(/[\u00a0\t]+/g,' ').replace(/[•·]/g,' ');
- if(!/NOVIG/.test(upper)||!/MATCHED/.test(upper)||!/AMOUNT/.test(upper)||!/TO\s*PAY/.test(upper))throw Error('Not a recognized matched Novig shared ticket');
- const amount=upper.match(/AMOUNT\s*\$?\s*([\d,]+\.\d{2})/);
- const pay=upper.match(/TO\s*PAY\s*\$?\s*([\d,]+\.\d{2})/);
+ if(!/NOVIG/.test(upper)||!/AMOUNT/.test(upper)||!/TO\s*PAY/.test(upper))throw Error('Not a recognized Novig shared ticket');
+ // OCR reads Novig's two-column Amount / To Pay layout either by columns or by rows.
+ const paired=upper.match(/AMOUNT\s+TO\s*PAY\s*\$?\s*([\d,]+\.\d{2})\s*\$?\s*([\d,]+\.\d{2})/);
+ const amount=paired?[,paired[1]]:upper.match(/AMOUNT\s*\$?\s*([\d,]+\.\d{2})/);
+ const pay=paired?[,paired[2]]:upper.match(/TO\s*PAY\s*\$?\s*([\d,]+\.\d{2})/);
  if(!amount||!pay)throw Error('Stake or payout could not be verified');
  const stake=Number(amount[1].replaceAll(',','')),payout=Number(pay[1].replaceAll(',',''));
  if(!Number.isFinite(stake)||!Number.isFinite(payout)||stake<=0||payout<=0)throw Error('Invalid ticket amounts');
@@ -227,9 +229,9 @@ function parseNovig(text){
  if(soccer){
   const countries={AUSTRIA:'AUT',IRELAND:'IRL',PORTUGAL:'POR',NORTHERNIRELAND:'NIR',ENGLAND:'ENG',SCOTLAND:'SCO',WALES:'WAL',FRANCE:'FRA',ITALY:'ITA',SPAIN:'ESP',GERMANY:'GER',NETHERLANDS:'NED',NORWAY:'NOR',SWITZERLAND:'SUI',CROATIA:'CRO',FINLAND:'FIN',ALBANIA:'ALB',BELGIUM:'BEL',DENMARK:'DEN',SWEDEN:'SWE',POLAND:'POL',TURKEY:'TUR',UKRAINE:'UKR',GREECE:'GRE',SERBIA:'SRB',CZECHIA:'CZE',SLOVAKIA:'SVK',HUNGARY:'HUN',ROMANIA:'ROU'};
   const normalize=v=>v.replace(/[^A-Z]/g,'');
-  const selection=upper.match(/([A-Z][A-Z ]{1,35}?)\s+YES\s+(\d{1,2}(?:\.\d+)?)\s*%/);
+  const selection=upper.match(/([A-Z][A-Z ]{1,35}?)\s+YES\s+[^A-Z\d]{0,4}(\d{1,2}(?:\.\d+)?)\s*%/);
   const pick=selection&&countries[normalize(selection[1].trim())];
-  const afterPay=upper.slice(pay.index+pay[0].length).split(/PLACED\s*:/)[0];
+  const afterPay=upper.slice(paired?paired.index+paired[0].length:pay.index+pay[0].length).split(/PLACED\s*:/)[0];
   const matchup=afterPay.match(/\b([A-Z]{3})\s+(?:\d{1,2}:\d{2}\s*(?:AM|PM)?\s*(?:TODAY|TOMORROW)?\s*)?([A-Z]{3})\b/);
   const teams=matchup?[matchup[1],matchup[2]]:[...afterPay.matchAll(/\b[A-Z]{3}\b/g)].map(m=>m[0]).filter(code=>Object.values(countries).includes(code));
   if(!pick||teams.length<2||!teams.includes(pick)||teams[0]===teams[1])throw Error('Soccer selection or matchup could not be verified');
