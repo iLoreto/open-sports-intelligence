@@ -89,3 +89,12 @@ test('missing play-by-play reports unavailable instead of inventing charts',asyn
 });
 
 test('live monitor has back navigation',async({page})=>{await page.goto(url);await expect(page.getByRole('link',{name:/Back to Sports Radar/})).toHaveAttribute('href','/');});
+
+test('scheduled NHL games show zero statistics and no misleading trajectory',async({page})=>{
+ await page.goto(url);
+ const vegas=page.locator('article[aria-label*="Vegas Golden Knights"]');
+ await expect(vegas.getByText('Game has not started · 0–0')).toBeVisible();
+ await expect(vegas.locator('.stats')).not.toContainText('17 / 17');
+ await expect(vegas.locator('.stats')).toContainText('0 / 0');
+ await expect(vegas.locator('.trajectory svg')).toHaveCount(0);
+});
