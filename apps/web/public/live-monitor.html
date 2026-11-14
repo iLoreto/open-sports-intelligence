@@ -42,7 +42,23 @@ function gameFor(t){return scores.find(e=>{
  const teams=e.competitions?.[0]?.competitors||[];
  return e._league===t.league&&teams.some(c=>sameTeam(c,t.home))&&teams.some(c=>sameTeam(c,t.away));
 })}
-function statValue(c,aliases){const values=Array.isArray(c?.statistics)?c.statistics:[];const a=values.find(x=>aliases.includes(String(x.name||x.abbreviation||x.displayName||x.label||'').toLowerCase().replace(/[^a-z]/g,'')));return a?.displayValue??a?.value??null}
+function statValue(c,aliases){
+ const stats=c?.statistics;
+ const values=Array.isArray(stats)?stats:Array.isArray(stats?.splits)?stats.splits:[];
+ const normalize=value=>String(value||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+ for(const item of values){
+  const keys=[item.name,item.abbreviation,item.displayName,item.label,item.type].map(normalize);
+  if(keys.some(key=>aliases.includes(key)))return item.displayValue??item.value??null;
+ }
+ if(stats&&typeof stats==='object'&&!Array.isArray(stats)){
+  for(const [key,value] of Object.entries(stats))if(aliases.includes(normalize(key))&&value!=null)return typeof value==='object'?value.displayValue??value.value??null:value;
+ }
+ return null;
+}
+function nhlStat(t,e,abbr,aliases){
+ return statValue(trajectories.get(t.league+':'+e.id)?.teams?.find(c=>sameTeam(c,abbr)),aliases)
+   ??statValue(e.competitions?.[0]?.competitors?.find(c=>sameTeam(c,abbr)),aliases);
+}
 function boxscoreCompetitor(t,e){const teams=trajectories.get(t.league+':'+e.id)?.teams||[];return teams.find(c=>sameTeam(c,t.home))||null}
 function boxscoreAway(t,e){const teams=trajectories.get(t.league+':'+e.id)?.teams||[];return teams.find(c=>sameTeam(c,t.away))||null}
 function statTile(label,a,b){const el=document.createElement('div');el.className='stat';const title=document.createElement('small');title.textContent=label;const value=document.createElement('b');value.textContent=clean(a)+' / '+clean(b);el.append(title,value);return el}
@@ -173,8 +189,8 @@ function render(){
   line.append(names,points);card.append(line);
   const clock=document.createElement('p');clock.className='muted';clock.textContent=e?statusText(e):'ESPN game not matched for this date';card.append(clock);
   if(e){const stats=document.createElement('div');stats.className='stats';
-   const fields=t.league==='nba'?[['FG %',['fieldgoalpct','fieldgoalpercentage']],['Rebounds',['totalrebounds','rebounds']],['Assists',['assists']],['3PT %',['threepointfieldgoalpct','threepointfieldgoalpercentage']],['Turnovers',['turnovers']],['Fouls',['fouls','totalfouls']]]:[['Shots',['shotsongoal','shots']],['Power play',['powerplaygoals','powerplay']],['Hits',['hits']],['Faceoff %',['faceoffpercent','faceoffpct']],['Blocked shots',['blockedshots']],['Penalty min',['penaltyminutes']]];
-   for(const [label,aliases] of fields){const pregame=state(e)==='Scheduled';stats.append(statTile(label,pregame?'0':statValue(boxscoreAway(t,e),aliases)??statValue(away,aliases),pregame?'0':statValue(boxscoreCompetitor(t,e),aliases)??statValue(home,aliases)))}
+   const fields=t.league==='nba'?[['FG %',['fieldgoalpct','fieldgoalpercentage']],['Rebounds',['totalrebounds','rebounds']],['Assists',['assists']],['3PT %',['threepointfieldgoalpct','threepointfieldgoalpercentage']],['Turnovers',['turnovers']],['Fouls',['fouls','totalfouls']]]:[['Shots',['shotsongoal','shots','sog','totalshotsongoal','shotsongoalfor']],['Power play',['powerplaygoals','powerplaygoalsattempts','powerplayopportunities','powerplaychances','powerplays','powerplaygoalsfor']],['Hits',['hits']],['Faceoff %',['faceoffpercent','faceoffpct']],['Blocked shots',['blockedshots']],['Penalty min',['penaltyminutes']]];
+   for(const [label,aliases] of fields){const pregame=state(e)==='Scheduled';stats.append(statTile(label,pregame?'0':nhlStat(t,e,t.away,aliases),pregame?'0':nhlStat(t,e,t.home,aliases)))}
    card.append(stats);
    card.append(trajectoryCard(e,t));
   }

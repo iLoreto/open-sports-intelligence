@@ -108,3 +108,16 @@ test('scheduled NHL games show zero statistics and no misleading trajectory',asy
  await expect(vegas.locator('.stats')).toContainText('0 / 0');
  await expect(vegas.locator('.trajectory svg')).toHaveCount(0);
 });
+
+test('NHL shots and power-play tiles read ESPN summary team statistics',async({page})=>{
+ await page.route('**/api/live-monitor/trajectory?**',route=>route.fulfill({
+  status:200,contentType:'application/json',body:JSON.stringify({plays:[],teams:[
+   {team:{abbreviation:'VAN'},statistics:[{name:'shotsOnGoal',displayValue:'14'},{name:'powerPlayGoals',displayValue:'1-2'}]},
+   {team:{abbreviation:'NYR'},statistics:[{name:'shotsOnGoal',displayValue:'12'},{name:'powerPlayGoals',displayValue:'0-1'}]}
+  ]})
+ }));
+ await page.goto(url);
+ const rangers=page.locator('article[aria-label*="New York Rangers"]');
+ await expect(rangers.locator('.stat').filter({hasText:'Shots'})).toContainText('14 / 12');
+ await expect(rangers.locator('.stat').filter({hasText:'Power play'})).toContainText('1-2 / 0-1');
+});
