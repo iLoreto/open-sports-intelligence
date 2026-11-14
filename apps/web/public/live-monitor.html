@@ -1,17 +1,17 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#081321"><title>iLoreto · Live Ticket Monitor</title>
 <style>
-:root{color-scheme:dark;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;background:#07111e;color:#e8f0fc}*{box-sizing:border-box}body{margin:0}main{max-width:1180px;margin:auto;padding:20px}header,.toolbar,.match-head,.scoreline,.ticket-top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}h1{margin:6px 0;font-size:clamp(25px,4vw,36px)}h2{margin:0 0 13px;font-size:19px}h3{margin:0;font-size:17px}.muted,small{color:#a5bad2}.eyebrow{color:#8cd4ff;font-size:11px;font-weight:800;letter-spacing:.12em}.layout{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:22px 0}.metric,.panel,.match{background:#101e30;border:1px solid #263d56;border-radius:16px;padding:17px}.metric strong{display:block;font-size:26px;margin-top:8px;font-variant-numeric:tabular-nums}.panel{margin:18px 0}.matches{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.match{padding:18px;min-width:0}.match-head{margin-bottom:14px}.pill{font-size:11px;font-weight:800;border-radius:25px;background:#273b50;color:#cfe0f6;padding:6px 10px}.pill.live{background:#5b3220;color:#ffcf9c}.pill.final{background:#23513e;color:#b3ffd2}.teams{display:grid;grid-template-columns:1fr auto;gap:9px;align-items:center}.team{display:flex;align-items:center;gap:9px;font-weight:750;margin:9px 0}.team img{width:29px;height:29px;object-fit:contain}.points{font-size:30px;font-weight:850;font-variant-numeric:tabular-nums;text-align:right}.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:15px}.stat{background:#172b43;border-radius:9px;padding:10px 8px;min-width:0}.stat b{display:block;font-size:16px;margin-top:4px;overflow-wrap:anywhere}.ticket-info{border-top:1px solid #2a4058;margin-top:14px;padding-top:13px}.ticket-info strong{color:#8df1bc}.ticket-info p{margin:8px 0;font-size:13px}.toolbar{justify-content:flex-start}button,select{background:#17568c;border:1px solid #6292b9;color:white;border-radius:9px;padding:9px 13px;font:inherit;cursor:pointer}select{background:#172b43}.secondary{background:transparent}.warning{color:#ffca8e}.good{color:#8df1bc}.error{color:#ff9a9a}.footer{font-size:12px;line-height:1.6;color:#9aacc2;margin:24px 0}a{color:#81d8ff}.empty{border:1px dashed #37516b;border-radius:12px;padding:20px;color:#afc2d7}.scoreline{align-items:baseline}#score-status{min-height:20px}@media(max-width:850px){.matches{grid-template-columns:1fr}.layout{grid-template-columns:repeat(2,1fr)}}@media(max-width:520px){main{padding:12px}.metric,.match,.panel{padding:13px}.layout{gap:8px}.metric strong{font-size:21px}.stats{gap:5px}.stat{padding:8px 6px}.points{font-size:26px}}
+:root{color-scheme:dark;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;background:#07111e;color:#e8f0fc}*{box-sizing:border-box}body{margin:0}main{max-width:1180px;margin:auto;padding:20px}header,.toolbar,.match-head,.scoreline,.ticket-top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}h1{margin:6px 0;font-size:clamp(25px,4vw,36px)}h2{margin:0 0 13px;font-size:19px}h3{margin:0;font-size:17px}.muted,small{color:#a5bad2}.eyebrow{color:#8cd4ff;font-size:11px;font-weight:800;letter-spacing:.12em}.layout{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:22px 0}.metric,.panel,.match{background:#101e30;border:1px solid #263d56;border-radius:16px;padding:17px}.metric strong{display:block;font-size:26px;margin-top:8px;font-variant-numeric:tabular-nums}.panel{margin:18px 0}.matches{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.match{padding:18px;min-width:0}.match-head{margin-bottom:14px}.pill{font-size:11px;font-weight:800;border-radius:25px;background:#273b50;color:#cfe0f6;padding:6px 10px}.pill.live{background:#5b3220;color:#ffcf9c}.pill.final{background:#23513e;color:#b3ffd2}.teams{display:grid;grid-template-columns:1fr auto;gap:9px;align-items:center}.team{display:flex;align-items:center;gap:9px;font-weight:750;margin:9px 0}.team img{width:29px;height:29px;object-fit:contain}.points{font-size:30px;font-weight:850;font-variant-numeric:tabular-nums;text-align:right}.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:15px}.stat{background:#172b43;border-radius:9px;padding:10px 8px;min-width:0}.stat b{display:block;font-size:16px;margin-top:4px;overflow-wrap:anywhere}.trajectory{margin-top:16px;padding:12px;background:#0b1829;border:1px solid #2a4058;border-radius:12px}.trajectory h4{font-size:13px;margin:5px 0 10px}.trajectory svg{width:100%;height:auto;display:block;overflow:visible}.trajectory .key{font-size:11px;color:#9fb8d2}.trajectory .key span{margin-right:14px}.trajectory .key b{font-size:14px}.ticket-info{border-top:1px solid #2a4058;margin-top:14px;padding-top:13px}.ticket-info strong{color:#8df1bc}.ticket-info p{margin:8px 0;font-size:13px}.toolbar{justify-content:flex-start}button,select{background:#17568c;border:1px solid #6292b9;color:white;border-radius:9px;padding:9px 13px;font:inherit;cursor:pointer}select{background:#172b43}.secondary{background:transparent}.warning{color:#ffca8e}.good{color:#8df1bc}.error{color:#ff9a9a}.footer{font-size:12px;line-height:1.6;color:#9aacc2;margin:24px 0}a{color:#81d8ff}.empty{border:1px dashed #37516b;border-radius:12px;padding:20px;color:#afc2d7}.scoreline{align-items:baseline}#score-status{min-height:20px}@media(max-width:850px){.matches{grid-template-columns:1fr}.layout{grid-template-columns:repeat(2,1fr)}}@media(max-width:520px){main{padding:12px}.metric,.match,.panel{padding:13px}.layout{gap:8px}.metric strong{font-size:21px}.stats{gap:5px}.stat{padding:8px 6px}.points{font-size:26px}}
 </style></head><body><main>
 <header><div><div class="eyebrow">iLORETO DEVELOPMENT · SPORTS RADAR</div><h1>Live Ticket Monitor</h1><div class="muted">NBA + NHL · ESPN game windows · Novig ticket snapshot</div></div><div class="toolbar"><button id="refresh">Refresh ESPN scores</button><span class="muted" id="score-status" role="status">Loading ESPN…</span></div></header>
 <section class="layout" aria-label="Ticket overview" role="region">
 <div class="metric"><small>Stake</small><strong id="stake">$119.56</strong></div>
 <div class="metric"><small>Payout</small><strong id="payout">$205.84</strong></div>
 <div class="metric"><small>Potential profit</small><strong id="profit">$86.28</strong></div>
-<div class="metric"><small>Snapshot sell value</small><strong id="sell">$122.24</strong></div>
+
 </section>
 <section class="panel"><div class="toolbar"><h2 style="flex:1;margin:0">ESPN Match Center</h2><label>League <select id="league"><option value="all">All tickets</option><option value="nba">NBA</option><option value="nhl">NHL</option></select></label></div><p class="muted">Each ticket retains its own game window, live score, period, team statistics, and position details. Missing ESPN data is shown as unavailable, never invented.</p><div class="matches" id="matches"></div></section>
-<p class="footer">ESPN scores and game statistics refresh every 60 seconds while visible. Ticket stakes, payouts, and sell values are from screenshots, not live Novig quotes. Remove affects this browser's monitor only. <a href="/">Sports Radar home</a>.</p>
+<p class="footer">ESPN scores and game statistics refresh every 60 seconds while visible. Ticket stakes and payouts are from screenshots, not live Novig quotes. Remove affects this browser's monitor only. <a href="/">Sports Radar home</a>.</p>
 </main><script>
 'use strict';
 const $=id=>document.getElementById(id),money=v=>'$'+Number(v).toFixed(2);
@@ -22,7 +22,7 @@ const tickets=[
 {id:'nyr',league:'nhl',home:'NYR',away:'VAN',pick:'NYR',name:'New York Rangers · Winner vs Vancouver',stake:30,payout:45.45,sell:29.54,entry:'66.0%'}
 ];
 let removed=[];try{const a=JSON.parse(localStorage.getItem(KEY)||localStorage.getItem(LEGACY)||'[]');if(Array.isArray(a))removed=a}catch{}
-let scores=[],sources=[],fetchedAt='';
+let scores=[],sources=[],fetchedAt='';const trajectories=new Map();
 function clean(v){return String(v??'—')}
 function teamLabel(t){return t?.team?.shortDisplayName||t?.team?.displayName||t?.team?.abbreviation||'Unknown'}
 function score(t){const v=t?.score;return v===undefined||v===null||v===''?'—':typeof v==='object'?(v.displayValue??v.value??'—'):v}
@@ -43,10 +43,68 @@ function gameFor(t){return scores.find(e=>{
 })}
 function statValue(c,aliases){const a=(c?.statistics||[]).find(x=>aliases.includes(String(x.name||x.abbreviation||x.displayName||'').toLowerCase().replace(/[^a-z]/g,'')));return a?.displayValue??a?.value??null}
 function statTile(label,a,b){const el=document.createElement('div');el.className='stat';const title=document.createElement('small');title.textContent=label;const value=document.createElement('b');value.textContent=clean(a)+' / '+clean(b);el.append(title,value);return el}
+function progression(plays,league,event){
+ const competitors=event?.competitions?.[0]?.competitors||[];
+ const homeId=String(competitors.find(c=>c.homeAway==='home')?.team?.id||'');
+ const awayId=String(competitors.find(c=>c.homeAway==='away')?.team?.id||'');
+ let goalsHome=0,goalsAway=0;
+ const result=[{x:0,home:0,away:0}],periodLength=league==='nba'?12:20;
+ for(const play of plays){
+  const p=Number(play.period?.number??play.period);
+  const clock=String(play.clock?.displayValue??play.clock??'');
+  const m=clock.match(/^([0-9]+):([0-9]+)/);
+  let home=play.homeScore==null?NaN:Number(play.homeScore),away=play.awayScore==null?NaN:Number(play.awayScore);
+  if(league==='nhl'&&(!Number.isFinite(home)||!Number.isFinite(away))){
+   const id=String(play.team?.id||play.teamId||'');
+   const isGoal=play.scoringPlay===true||/goal/i.test(String(play.type?.text||play.type?.name||play.text||''));
+   if(!isGoal||!id||(!homeId&&!awayId))continue;
+   if(id===homeId)goalsHome++;else if(id===awayId)goalsAway++;else continue;
+   home=goalsHome;away=goalsAway;
+  }
+  if(!Number.isFinite(home)||!Number.isFinite(away)||home<0||away<0||!Number.isFinite(p)||p<1)continue;
+  const elapsed=m?(p-1)*periodLength+(periodLength-(Number(m[1])+Number(m[2])/60)):(p-1)*periodLength;
+  result.push({x:Math.max(0,elapsed),home,away});
+ }
+ return result.length>1?result.sort((a,b)=>a.x-b.x):[];
+}
+function chartSvg(points,mode){
+ const width=560,height=175,pad=23;
+ const maxX=Math.max(1,...points.map(p=>p.x));
+ const values=points.flatMap(p=>mode==='totals'?[p.home,p.away]:[p.home-p.away]);
+ const minY=mode==='totals'?0:Math.min(0,...values),maxY=Math.max(1,...values);
+ const x=v=>pad+(v/maxX)*(width-2*pad),y=v=>height-pad-(v-minY)/Math.max(1,maxY-minY)*(height-2*pad);
+ const path=field=>points.map((p,i)=>(i?'L':'M')+x(p.x).toFixed(1)+','+y(field(p)).toFixed(1)).join(' ');
+ const baseline=mode==='margin'?'<line x1="'+pad+'" y1="'+y(0)+'" x2="'+(width-pad)+'" y2="'+y(0)+'" stroke="#6c8098" stroke-dasharray="4 4"/>':'';
+ const lines=mode==='totals'?'<path d="'+path(p=>p.away)+'" stroke="#76bfff"/><path d="'+path(p=>p.home)+'" stroke="#4cda9c"/>':'<path d="'+path(p=>p.home-p.away)+'" stroke="#ffb665"/>';
+ return '<svg viewBox="0 0 '+width+' '+height+'" role="img" aria-label="'+(mode==='totals'?'Cumulative scoring trajectory':'Home team scoring lead trajectory')+'">'+baseline+'<g fill="none" stroke-width="3" stroke-linejoin="round" stroke-linecap="round">'+lines+'</g><g fill="#9fb8d2" font-size="11"><text x="4" y="13">'+maxY+'</text><text x="4" y="'+(height-5)+'">'+minY+'</text><text x="'+(width-65)+'" y="'+(height-5)+'">'+maxX.toFixed(0)+' min</text></g></svg>';
+}
+function trajectoryCard(e,t){
+ const wrapper=document.createElement('section');wrapper.className='trajectory';
+ const heading=document.createElement('h4');heading.textContent='Game trajectory · '+t.league.toUpperCase();wrapper.append(heading);
+ const data=trajectories.get(t.league+':'+e.id);
+ if(!data){const msg=document.createElement('p');msg.className='muted';msg.textContent='Loading ESPN scoring progression…';wrapper.append(msg);return wrapper}
+ const points=progression(data.plays||[],t.league,e);
+ if(!points.length){const msg=document.createElement('p');msg.className='muted';msg.textContent=data.error?'Trajectory unavailable: '+data.error:'ESPN has no scored play-by-play checkpoints for this game';wrapper.append(msg);return wrapper}
+ const key=document.createElement('p');key.className='key';key.textContent='Blue: '+t.away+' · Green: '+t.home+' · Orange: '+t.home+' lead';wrapper.append(key);
+ for(const [title,mode] of [['Cumulative scoring','totals'],['Lead momentum','margin']]){
+  const label=document.createElement('h4');label.textContent=title;wrapper.append(label);
+  const graph=document.createElement('div');graph.innerHTML=chartSvg(points,mode);wrapper.append(graph);
+ }
+ return wrapper;
+}
+async function loadTrajectories(){
+ const games=[...new Map(tickets.filter(t=>!removed.includes(t.id)).map(t=>[t.id,{t,e:gameFor(t)}]).filter(x=>x[1].e?.id).map(([id,item])=>[item.t.league+':'+item.e.id,item])).values()];
+ await Promise.all(games.map(async({t,e})=>{
+  const key=t.league+':'+e.id;
+  try{const response=await fetch('/api/live-monitor/trajectory?league='+t.league+'&event='+encodeURIComponent(e.id),{cache:'no-store',signal:AbortSignal.timeout(15000)});const data=await response.json();trajectories.set(key,response.ok?data:{error:data.error||'ESPN unavailable'})}
+  catch(error){trajectories.set(key,{error:error.message})}
+ }));
+ render();
+}
 function render(){
  const active=tickets.filter(t=>!removed.includes(t.id));
  const sum=k=>active.reduce((n,t)=>n+t[k],0);
- $('stake').textContent=money(sum('stake'));$('payout').textContent=money(sum('payout'));$('profit').textContent=money(sum('payout')-sum('stake'));$('sell').textContent=money(sum('sell'));
+ $('stake').textContent=money(sum('stake'));$('payout').textContent=money(sum('payout'));$('profit').textContent=money(sum('payout')-sum('stake'));
  const root=$('matches');root.replaceChildren();
  const filtered=active.filter(t=>$('league').value==='all'||$('league').value===t.league);
  if(!filtered.length){const empty=document.createElement('p');empty.className='empty';empty.textContent='No tickets in this view.';root.append(empty);return}
@@ -68,11 +126,12 @@ function render(){
    const fields=t.league==='nba'?[['FG %',['fieldgoalpct','fieldgoalpercentage']],['Rebounds',['totalrebounds','rebounds']],['Assists',['assists']],['3PT %',['threepointfieldgoalpct','threepointfieldgoalpercentage']],['Turnovers',['turnovers']],['Fouls',['fouls','totalfouls']]]:[['Shots',['shotsongoal','shots']],['Power play',['powerplaygoals','powerplay']],['Hits',['hits']],['Faceoff %',['faceoffpercent','faceoffpct']],['Blocked shots',['blockedshots']],['Penalty min',['penaltyminutes']]];
    for(const [label,aliases] of fields)stats.append(statTile(label,statValue(away,aliases),statValue(home,aliases)));
    card.append(stats);
+   card.append(trajectoryCard(e,t));
   }
   const info=document.createElement('div');info.className='ticket-info';
   const selection=document.createElement('p');selection.textContent='Selection: '+t.name+' · Entry '+t.entry;info.append(selection);
   const amounts=document.createElement('p');const strong=document.createElement('strong');strong.textContent='Stake '+money(t.stake)+' · Payout '+money(t.payout)+' · Profit '+money(t.payout-t.stake);amounts.append(strong);info.append(amounts);
-  const sell=document.createElement('p');sell.className='muted';sell.textContent='Sell snapshot '+money(t.sell);info.append(sell);
+
   if(t.orders){const orders=document.createElement('p');orders.className='muted';orders.textContent=t.orders.map(o=>o.price+' · '+money(o.stake)+' / '+money(o.payout)).join(' | ');info.append(orders)}
   const button=document.createElement('button');button.className='secondary';button.type='button';button.textContent='🗑️';button.title='Delete ticket';button.setAttribute('aria-label','Delete '+t.name);button.onclick=()=>{
    const password=window.prompt('Enter deletion password to remove this ticket');
@@ -93,7 +152,7 @@ async function refresh(){
   sources=data.sources||[];scores=sources.flatMap(s=>(s.events||[]).map(e=>({...e,_league:s.league})));fetchedAt=data.fetchedAt||'';
   const failures=sources.filter(s=>s.error).map(s=>s.league.toUpperCase()+': '+s.error);
   $('score-status').textContent='ESPN '+(fetchedAt?new Date(fetchedAt).toLocaleTimeString():'updated')+(failures.length?' · '+failures.join(' · '):'');
-  render();
+  render();await loadTrajectories();
  }catch(error){$('score-status').textContent='ESPN unavailable: '+error.message+' · last known scores retained';render()}
  finally{busy=false;$('refresh').disabled=false}
 }

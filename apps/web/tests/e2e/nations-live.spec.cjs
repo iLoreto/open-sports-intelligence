@@ -3,7 +3,14 @@ const url='http://127.0.0.1:4179/live-monitor.html';
 const competitor=(abbreviation,homeAway,score,stats={})=>({homeAway,team:{abbreviation,shortDisplayName:abbreviation},score:String(score),statistics:Object.entries(stats).map(([name,value])=>({name,displayValue:String(value)}))});
 const event=(id,away,home,as,hs,league)=>({id,status:{type:{state:'in',description:'In Progress',shortDetail:league==='nba'?'Q4 7:42':'P2 12:30'},displayClock:'7:42'},competitions:[{competitors:[competitor(away,'away',as,{rebounds:34,shotsOnGoal:23}),competitor(home,'home',hs,{rebounds:40,shotsOnGoal:27})]}]});
 const payload={fetchedAt:'2026-11-14T02:00:00Z',sources:[{league:'nba',events:[event('nba1','NY','IND',89,99,'nba')],error:null},{league:'nhl',events:[event('nhl1','NSH','VGK',1,3,'nhl'),event('nhl2','VAN','NYR',2,2,'nhl')],error:null}]};
-test.beforeEach(async({page})=>{await page.route('**/api/live-monitor/scores?**',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(payload)}))});
+test.beforeEach(async({page})=>{
+ await page.route('**/api/live-monitor/scores?**',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(payload)}));
+ await page.route('**/api/live-monitor/trajectory?**',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({plays:[
+ {period:{number:1},clock:{displayValue:'11:40'},homeScore:2,awayScore:0},
+ {period:{number:1},clock:{displayValue:'10:20'},homeScore:2,awayScore:3},
+ {period:{number:2},clock:{displayValue:'08:15'},homeScore:28,awayScore:25}
+ ]})}));
+});
 test('canonical page and legacy redirect show three ticket game windows',async({page})=>{
  await page.goto('http://127.0.0.1:4179/nations-live.html');
  await expect(page).toHaveURL(/live-monitor.html/);
@@ -63,4 +70,20 @@ test('inline script runs without browser exceptions',async({page})=>{
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto(url);await expect(page.locator('#matches article')).toHaveCount(3);
  expect(errors).toEqual([]);
+});
+
+test('NBA and NHL game windows render scoring trajectory and lead momentum without sell snapshot',async({page})=>{
+ await page.goto(url);
+ await expect(page.locator('article .trajectory svg')).toHaveCount(6);
+ await expect(page.locator('article[aria-label*="Indiana Pacers"] .trajectory svg')).toHaveCount(2);
+ await expect(page.locator('article[aria-label*="Vegas Golden Knights"] .trajectory svg')).toHaveCount(2);
+ await expect(page.locator('body')).not.toContainText('Sell snapshot');
+ await expect(page.locator('#sell')).toHaveCount(0);
+ await expect(page.locator('body')).toContainText('Lead momentum');
+});
+test('missing play-by-play reports unavailable instead of inventing charts',async({page})=>{
+ await page.route('**/api/live-monitor/trajectory?**',route=>route.fulfill({status:200,contentType:'application/json',body:'{"plays":[]}'}));
+ await page.goto(url);
+ await expect(page.locator('.trajectory svg')).toHaveCount(0);
+ await expect(page.locator('.trajectory').first()).toContainText('no scored play-by-play checkpoints');
 });
