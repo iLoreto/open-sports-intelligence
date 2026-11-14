@@ -29,7 +29,18 @@ function score(t){const v=t?.score;return v===undefined||v===null||v===''?'—':
 function logo(t){const u=t?.team?.logo||t?.team?.logos?.[0]?.href;return typeof u==='string'&&u.startsWith('https://')?u:null}
 function state(e){const t=e?.status?.type||e?.competitions?.[0]?.status?.type||{};return t.completed?'Final':t.state==='in'?'Live':t.state==='pre'?'Scheduled':t.description||'Unknown'}
 function statusText(e){const c=e?.competitions?.[0],s=e?.status||c?.status||{};return [s.type?.shortDetail||s.type?.detail||s.type?.description||state(e),s.displayClock].filter(Boolean).join(' · ')}
-function gameFor(t){return scores.find(e=>{const teams=e.competitions?.[0]?.competitors||[];const ab=teams.map(c=>c.team?.abbreviation);return e._league===t.league&&ab.includes(t.home)&&ab.includes(t.away)})}
+function sameTeam(competitor,abbr){
+ const code=String(competitor?.team?.abbreviation||'').toUpperCase();
+ const aliases={NYK:['NY','NYK'],IND:['IND'],VGK:['VGK','VEG'],NSH:['NSH'],NYR:['NYR'],VAN:['VAN']};
+ if((aliases[abbr]||[abbr]).includes(code))return true;
+ const name=String(competitor?.team?.displayName||competitor?.team?.shortDisplayName||'').toLowerCase();
+ const names={NYK:'knicks',IND:'pacers',VGK:'golden knights',NSH:'predators',NYR:'rangers',VAN:'canucks'};
+ return !!names[abbr]&&name.includes(names[abbr]);
+}
+function gameFor(t){return scores.find(e=>{
+ const teams=e.competitions?.[0]?.competitors||[];
+ return e._league===t.league&&teams.some(c=>sameTeam(c,t.home))&&teams.some(c=>sameTeam(c,t.away));
+})}
 function statValue(c,aliases){const a=(c?.statistics||[]).find(x=>aliases.includes(String(x.name||x.abbreviation||x.displayName||'').toLowerCase().replace(/[^a-z]/g,'')));return a?.displayValue??a?.value??null}
 function statTile(label,a,b){const el=document.createElement('div');el.className='stat';const title=document.createElement('small');title.textContent=label;const value=document.createElement('b');value.textContent=clean(a)+' / '+clean(b);el.append(title,value);return el}
 function render(){
@@ -41,8 +52,8 @@ function render(){
  if(!filtered.length){const empty=document.createElement('p');empty.className='empty';empty.textContent='No tickets in this view.';root.append(empty);return}
  for(const t of filtered){
   const e=gameFor(t),cs=e?.competitions?.[0]?.competitors||[];
-  const home=cs.find(c=>c.homeAway==='home')||cs.find(c=>c.team?.abbreviation===t.home);
-  const away=cs.find(c=>c.homeAway==='away')||cs.find(c=>c.team?.abbreviation===t.away);
+  const home=cs.find(c=>sameTeam(c,t.home));
+  const away=cs.find(c=>sameTeam(c,t.away));
   const card=document.createElement('article');card.className='match';card.setAttribute('aria-label',t.name);
   const head=document.createElement('div');head.className='match-head';
   const title=document.createElement('h3');title.textContent=t.league.toUpperCase()+' · '+t.away+' @ '+t.home;
@@ -50,7 +61,7 @@ function render(){
   head.append(title,pill);card.append(head);
   const line=document.createElement('div');line.className='teams';
   const names=document.createElement('div'),points=document.createElement('div');points.className='points';
-  for(const c of [away,home]){const row=document.createElement('div');row.className='team';const imageUrl=logo(c);if(imageUrl){const img=document.createElement('img');img.src=imageUrl;img.alt='';img.loading='lazy';row.append(img)}const name=document.createElement('span');name.textContent=c?teamLabel(c):(c===away?t.away:t.home);row.append(name);names.append(row);const value=document.createElement('div');value.textContent=c?score(c):'—';points.append(value)}
+  for(const [index,c] of [away,home].entries()){const row=document.createElement('div');row.className='team';const imageUrl=logo(c);if(imageUrl){const img=document.createElement('img');img.src=imageUrl;img.alt='';img.loading='lazy';row.append(img)}const name=document.createElement('span');name.textContent=c?teamLabel(c):(index===0?t.away:t.home);row.append(name);names.append(row);const value=document.createElement('div');value.textContent=c?score(c):'—';points.append(value)}
   line.append(names,points);card.append(line);
   const clock=document.createElement('p');clock.className='muted';clock.textContent=e?statusText(e):'ESPN game not matched for this date';card.append(clock);
   if(e){const stats=document.createElement('div');stats.className='stats';
