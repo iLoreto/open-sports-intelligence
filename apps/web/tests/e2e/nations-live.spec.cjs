@@ -7,7 +7,7 @@ const summary={header:{competitions:[{competitors:[{team:{abbreviation:'NY'},sco
 ]};
 test.beforeEach(async({page})=>{await page.route('**/api/nba/momentum',r=>r.fulfill({status:200,contentType:'application/json',body:JSON.stringify(summary)}))});
 test('legacy monitor opens NBA monitor and removes soccer ticket display',async({page})=>{
- await page.goto(url);await expect(page).toHaveURL(/nba-momentum-monitor.html/);
+ await page.goto(url);await expect(page).toHaveURL(/live-monitor.html/);
  await expect(page.getByRole('heading',{name:/Knicks vs Pacers/})).toBeVisible();
  await expect(page.getByRole('heading',{name:'Tickets'})).toBeVisible();
  await expect(page.locator('body')).not.toContainText('Scotland');
