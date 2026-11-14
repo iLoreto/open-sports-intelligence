@@ -20,7 +20,7 @@ test('canonical page and legacy redirect show three ticket game windows',async({
 });
 test('NBA and NHL tickets show ESPN scores, game status and stats',async({page})=>{
  await page.goto(url);
- await expect(page.getByRole('status')).toContainText('ESPN');
+ await expect(page.locator('#score-status')).toContainText('ESPN');
  const pacers=page.locator('article[aria-label*="Indiana Pacers"]');
  await expect(pacers).toContainText('99');
  await expect(pacers).toContainText('89');
@@ -62,7 +62,7 @@ test('trash icon requires exact password and confirmation before removal',async(
 test('ESPN errors are explicit without fake scores',async({page})=>{
  await page.route('**/api/live-monitor/scores?**',route=>route.fulfill({status:502,contentType:'application/json',body:'{"error":"ESPN upstream failed"}'}));
  await page.goto(url);
- await expect(page.getByRole('status')).toContainText('ESPN unavailable');
+ await expect(page.locator('#score-status')).toContainText('ESPN unavailable');
  await expect(page.locator('#matches article')).toHaveCount(3);
  await expect(page.locator('article[aria-label*="Indiana Pacers"]')).toContainText('Unverified');
 });
@@ -118,6 +118,6 @@ test('NHL shots and power-play tiles read ESPN summary team statistics',async({p
  }));
  await page.goto(url);
  const rangers=page.locator('article[aria-label*="New York Rangers"]');
- await expect(rangers.locator('.stat').filter({hasText:'Shots'})).toContainText('14 / 12');
+ await expect(rangers.locator('.stat').filter({has:page.getByText('Shots',{exact:true})})).toContainText('14 / 12');
  await expect(rangers.locator('.stat').filter({hasText:'Power play'})).toContainText('1-2 / 0-1');
 });
