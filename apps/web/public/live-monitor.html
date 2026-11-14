@@ -45,28 +45,47 @@ function gameFor(t){return scores.find(e=>{
 function statValue(c,aliases){const a=(c?.statistics||[]).find(x=>aliases.includes(String(x.name||x.abbreviation||x.displayName||'').toLowerCase().replace(/[^a-z]/g,'')));return a?.displayValue??a?.value??null}
 function statTile(label,a,b){const el=document.createElement('div');el.className='stat';const title=document.createElement('small');title.textContent=label;const value=document.createElement('b');value.textContent=clean(a)+' / '+clean(b);el.append(title,value);return el}
 function progression(plays,league,event){
- const competitors=event?.competitions?.[0]?.competitors||[];
- const homeId=String(competitors.find(c=>c.homeAway==='home')?.team?.id||'');
- const awayId=String(competitors.find(c=>c.homeAway==='away')?.team?.id||'');
- let goalsHome=0,goalsAway=0;
- const result=[{x:0,home:0,away:0}],periodLength=league==='nba'?12:20;
+ const teams=event?.competitions?.[0]?.competitors||[];
+ const home=teams.find(c=>c.homeAway==='home')?.team||{};
+ const away=teams.find(c=>c.homeAway==='away')?.team||{};
+ const duration=league==='nba'?12:20;
+ const events=[];
  for(const play of plays){
-  const p=Number(play.period?.number??play.period);
+  const period=Number(play.period?.number??play.period);
   const clock=String(play.clock?.displayValue??play.clock??'');
-  const m=clock.match(/^([0-9]+):([0-9]+)/);
-  let home=play.homeScore==null?NaN:Number(play.homeScore),away=play.awayScore==null?NaN:Number(play.awayScore);
-  if(league==='nhl'&&(!Number.isFinite(home)||!Number.isFinite(away))){
-   const id=String(play.team?.id||play.teamId||'');
-   const isGoal=play.scoringPlay===true||/goal/i.test(String(play.type?.text||play.type?.name||play.text||''));
-   if(!isGoal||!id||(!homeId&&!awayId))continue;
-   if(id===homeId)goalsHome++;else if(id===awayId)goalsAway++;else continue;
-   home=goalsHome;away=goalsAway;
-  }
-  if(!Number.isFinite(home)||!Number.isFinite(away)||home<0||away<0||!Number.isFinite(p)||p<1)continue;
-  const elapsed=m?(p-1)*periodLength+(periodLength-(Number(m[1])+Number(m[2])/60)):(p-1)*periodLength;
-  result.push({x:Math.max(0,elapsed),home,away});
+  const match=clock.match(/^([0-9]+):([0-9]+)/);
+  if(!Number.isFinite(period)||period<1||!match)continue;
+  const elapsed=Math.max(0,(period-1)*duration+duration-Number(match[1])-Number(match[2])/60);
+  events.push({play,x:elapsed});
  }
- return result.length>1?result.sort((a,b)=>a.x-b.x):[];
+ events.sort((a,b)=>a.x-b.x);
+ const result=[{x:0,home:0,away:0}];
+ let h=0,a=0;
+ for(const {play,x} of events){
+  if(league==='nhl'){
+   // NHL summary feeds mix cumulative score snapshots and scoring events.
+   // Only accept actual goal events; never allow an older 0-0 snapshot to erase a goal.
+   const kind=String(play.type?.text||play.type?.name||'').toLowerCase();
+   const isGoal=play.scoringPlay===true||kind==='goal'||kind==='goal scored';
+   if(!isGoal)continue;
+   const id=String(play.team?.id||play.teamId||'');
+   const code=String(play.team?.abbreviation||'');
+   if(id&&id===String(home.id||'')||code&&code===home.abbreviation)h++;
+   else if(id&&id===String(away.id||'')||code&&code===away.abbreviation)a++;
+   else continue;
+  }else{
+   const hs=play.homeScore==null?NaN:Number(play.homeScore);
+   const as=play.awayScore==null?NaN:Number(play.awayScore);
+   if(!Number.isFinite(hs)||!Number.isFinite(as))continue;
+   h=Math.max(h,hs);a=Math.max(a,as);
+  }
+  result.push({x,home:h,away:a});
+ }
+ return result.length>1?result:[];
+}
+function gameBoxTeam(e,t,abbr){
+ const teams=trajectories.get(t.league+':'+e.id)?.teams||[];
+ return teams.find(c=>sameTeam(c,abbr))||null;
 }
 function chartSvg(points,mode){
  const width=560,height=175,pad=23;
@@ -125,7 +144,7 @@ function render(){
   const clock=document.createElement('p');clock.className='muted';clock.textContent=e?statusText(e):'ESPN game not matched for this date';card.append(clock);
   if(e){const stats=document.createElement('div');stats.className='stats';
    const fields=t.league==='nba'?[['FG %',['fieldgoalpct','fieldgoalpercentage']],['Rebounds',['totalrebounds','rebounds']],['Assists',['assists']],['3PT %',['threepointfieldgoalpct','threepointfieldgoalpercentage']],['Turnovers',['turnovers']],['Fouls',['fouls','totalfouls']]]:[['Shots',['shotsongoal','shots']],['Power play',['powerplaygoals','powerplay']],['Hits',['hits']],['Faceoff %',['faceoffpercent','faceoffpct']],['Blocked shots',['blockedshots']],['Penalty min',['penaltyminutes']]];
-   for(const [label,aliases] of fields)stats.append(statTile(label,statValue(away,aliases),statValue(home,aliases)));
+   for(const [label,aliases] of fields)stats.append(statTile(label,statValue(gameBoxTeam(e,t,t.away),aliases)??statValue(away,aliases),statValue(gameBoxTeam(e,t,t.home),aliases)??statValue(home,aliases)));
    card.append(stats);
    card.append(trajectoryCard(e,t));
   }
