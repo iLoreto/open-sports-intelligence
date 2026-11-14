@@ -105,6 +105,7 @@ function shotProgression(plays,event){
 function trajectoryCard(e,t){
  const wrapper=document.createElement('section');wrapper.className='trajectory';
  const heading=document.createElement('h4');heading.textContent='Game trajectory · '+t.league.toUpperCase();wrapper.append(heading);
+ if(state(e)==='Scheduled'){const msg=document.createElement('p');msg.className='muted';msg.textContent='Game has not started · 0–0';wrapper.append(msg);return wrapper}
  const data=trajectories.get(t.league+':'+e.id);
  if(!data){const msg=document.createElement('p');msg.className='muted';msg.textContent='Loading ESPN scoring progression…';wrapper.append(msg);return wrapper}
  const points=progression(data.plays||[],t.league,e);
@@ -149,12 +150,12 @@ function render(){
   head.append(title,pill);card.append(head);
   const line=document.createElement('div');line.className='teams';
   const names=document.createElement('div'),points=document.createElement('div');points.className='points';
-  for(const [index,c] of [away,home].entries()){const row=document.createElement('div');row.className='team';const imageUrl=logo(c);if(imageUrl){const img=document.createElement('img');img.src=imageUrl;img.alt='';img.loading='lazy';row.append(img)}const name=document.createElement('span');name.textContent=c?teamLabel(c):(index===0?t.away:t.home);row.append(name);names.append(row);const value=document.createElement('div');value.textContent=c?score(c):'—';points.append(value)}
+  for(const [index,c] of [away,home].entries()){const row=document.createElement('div');row.className='team';const imageUrl=logo(c);if(imageUrl){const img=document.createElement('img');img.src=imageUrl;img.alt='';img.loading='lazy';row.append(img)}const name=document.createElement('span');name.textContent=c?teamLabel(c):(index===0?t.away:t.home);row.append(name);names.append(row);const value=document.createElement('div');value.textContent=state(e)==='Scheduled'?'0':c?score(c):'—';points.append(value)}
   line.append(names,points);card.append(line);
   const clock=document.createElement('p');clock.className='muted';clock.textContent=e?statusText(e):'ESPN game not matched for this date';card.append(clock);
   if(e){const stats=document.createElement('div');stats.className='stats';
    const fields=t.league==='nba'?[['FG %',['fieldgoalpct','fieldgoalpercentage']],['Rebounds',['totalrebounds','rebounds']],['Assists',['assists']],['3PT %',['threepointfieldgoalpct','threepointfieldgoalpercentage']],['Turnovers',['turnovers']],['Fouls',['fouls','totalfouls']]]:[['Shots',['shotsongoal','shots']],['Power play',['powerplaygoals','powerplay']],['Hits',['hits']],['Faceoff %',['faceoffpercent','faceoffpct']],['Blocked shots',['blockedshots']],['Penalty min',['penaltyminutes']]];
-   for(const [label,aliases] of fields)stats.append(statTile(label,statValue(boxscoreAway(t,e),aliases)??statValue(away,aliases),statValue(boxscoreCompetitor(t,e),aliases)??statValue(home,aliases)));
+   for(const [label,aliases] of fields){const pregame=state(e)==='Scheduled';stats.append(statTile(label,pregame?'0':statValue(boxscoreAway(t,e),aliases)??statValue(away,aliases),pregame?'0':statValue(boxscoreCompetitor(t,e),aliases)??statValue(home,aliases)))}
    card.append(stats);
    card.append(trajectoryCard(e,t));
   }
