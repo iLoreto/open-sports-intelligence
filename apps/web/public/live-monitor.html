@@ -48,7 +48,7 @@ function progression(plays,league){
  for(const play of plays){
   const p=Number(play.period?.number??play.period);
   const clock=String(play.clock?.displayValue??play.clock??'');
-  const m=clock.match(/^(\\d+):(\\d+)/);
+  const m=clock.match(/^([0-9]+):([0-9]+)/);
   const home=Number(play.homeScore),away=Number(play.awayScore);
   if(!Number.isFinite(home)||!Number.isFinite(away)||home<0||away<0||!Number.isFinite(p)||p<1)continue;
   const elapsed=m?(p-1)*periodLength+(periodLength-(Number(m[1])+Number(m[2])/60)):(p-1)*periodLength;
