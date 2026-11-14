@@ -94,7 +94,7 @@ export default {
       }));
       const failed = responses.filter(item=>item.error);
       if (failed.length===responses.length) return json({error:'Both ESPN scoreboards unavailable',sources:responses},502);
-      return json({source:'ESPN public scoreboards',fetchedAt:new Date().toISOString(),date:day,sources:responses},{headers:{'cache-control':'public, max-age=30'}});
+      return json({source:'ESPN public scoreboards',fetchedAt:new Date().toISOString(),date:day,sources:responses});
     }
     if (url.pathname === '/api/nba/momentum') {
       if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
