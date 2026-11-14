@@ -15,7 +15,7 @@ interface Comparison { source: string; fetchedAt: string; sample: number; left: 
   template: `
   <main class="workbench">
     <header><div class="eyebrow">OPEN SPORTS INTELLIGENCE</div><h1>Sports Research Workbench</h1><p>Manual, sport-specific research. No automated scanning.</p></header>
-    <nav class="sports" aria-label="Workspaces"><button [class.selected]="tab() === 'research'" (click)="chooseTab('research')">Research</button><button [class.selected]="tab() === 'markets'" (click)="chooseTab('markets')">Market Scanner</button><a class="methodology-nav" href="/how-we-read-the-game.html" aria-label="Read Radar Methodology and discipline rules">Radar Methodology</a></nav>
+    <nav class="sports" aria-label="Workspaces"><button [class.selected]="tab() === 'research'" (click)="chooseTab('research')">Research</button><button [class.selected]="tab() === 'markets'" (click)="chooseTab('markets')">Market Scanner</button><a class="methodology-nav" href="/how-we-read-the-game.html" aria-label="Read Radar Methodology and discipline rules">Radar Methodology</a><button type="button" class="methodology-nav" (click)="openLiveMonitor()" aria-label="Open password-protected Live Monitor">📊 Live Monitor</button></nav>
     <nav class="sports" aria-label="Sports"><button *ngFor="let league of availableLeagues" [class.selected]="sport() === league.id" (click)="chooseSport(league.id)"><svg *ngIf="league.id === 'tennis'" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" style="vertical-align:-3px;margin-right:5px"><circle cx="12" cy="12" r="10" fill="#c6e948" stroke="#75962b" stroke-width="1"/><path d="M5.2 4.6C11 8 11 16 5.2 19.4M18.8 4.6C13 8 13 16 18.8 19.4" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>{{ league.label }}</button></nav>
     <ng-container *ngIf="tab() === 'research'">
     <section class="panel" *ngIf="sport() !== 'tennis'">
@@ -67,7 +67,7 @@ interface Comparison { source: string; fetchedAt: string; sample: number; left: 
       <p *ngIf="provider() === 'novig'" class="hint">Novig integration is not configured yet.</p>
       <button class="run" [disabled]="scanLoading() || provider() === 'novig' || !validPriceRange()" (click)="scan()">{{ scanLoading() ? 'Scanning…' : 'Scan now →' }}</button>
       <p *ngIf="scanError()" class="error">{{ scanError() }}</p>
-      <ng-container *ngIf="scanResult() as result"><p class="meta">{{ result.source }} · {{ result.scannedAt | date:'medium' }} · {{ result.markets.length }} matching contracts · {{ result.sportsEvents }} sports events across {{ result.pagesScanned }} pages</p><p *ngIf="result.markets.length === 0" class="error">No matching contracts found in the scanned pages. Try widening the price range; the scan may not cover every sports event.</p><p class="hint">{{ result.note }} <strong *ngIf="result.partialCoverage">More pages exist; this snapshot is incomplete.</strong></p>
+      <ng-container *ngIf="scanResult() as result"><p class="meta">{{ result.source }} · {{ result.scannedAt | date:'medium' }} · {{ result.markets.length }} matching contracts · {{ result.sportsEvents }} sports events across {{ result.pagesScanned }} pages</p><p *ngIf="result.markets.length === 0" class="error">No matching contracts in the scanned portion. {{ result.partialCoverage ? 'Coverage is incomplete; this is NOT a full-book no-match result.' : 'Try widening the price range.' }}</p><p class="hint">{{ result.note }} <strong *ngIf="result.partialCoverage">More pages exist; this snapshot is incomplete.</strong></p>
         <a *ngFor="let m of result.markets" class="stats market-result" [href]="marketUrl(m)" target="_blank" rel="noopener noreferrer" [attr.aria-label]="'Open Kalshi market ' + m.title"><div class="market-result-heading"><strong>{{ m.event }} ↗</strong><span class="market-percentage" [attr.aria-label]="m.side + ' ask price ' + m.askCents + ' percent'">{{ m.askCents }}%</span></div><p>{{ m.title }} · {{ m.ticker }} · {{ m.side }} ask {{ m.askCents }}¢</p><p>YES bid {{ m.yesBid ?? '—' }} · YES ask {{ m.yesAsk ?? '—' }} · NO ask {{ m.noAsk ?? '—' }} · Last {{ m.last ?? '—' }} · 24h volume {{ m.volume24h ?? '—' }}</p></a>
       </ng-container>
     </section>
@@ -126,6 +126,12 @@ export class AppComponent {
       if (id === this.scanId && this.tab() === 'markets' && this.provider() === 'kalshi') this.scanResult.set(body);
     } catch(e) { if (id === this.scanId) this.scanError.set(e instanceof Error ? e.message : 'Scan unavailable'); }
     finally { if (id === this.scanId) this.scanLoading.set(false); }
+  }
+  openLiveMonitor(): void {
+    const password = window.prompt('Enter Live Monitor password');
+    if (password === null) return;
+    if (password !== 'XTBY') { window.alert('Incorrect password.'); return; }
+    window.location.assign('/live-monitor.html');
   }
   readonly buildId = BUILD_ID;
   readonly availableLeagues: { id: Sport; label: string }[] = [{id:'nba',label:'🏀 NBA'},{id:'nfl',label:'🏈 NFL'},{id:'nhl',label:'🏒 NHL'},{id:'mlb',label:'⚾ MLB'},{id:'wnba',label:'🏀 WNBA'},{id:'ncaaf',label:'🏈 NCAA Football'},{id:'ncaam',label:'🏀 NCAA Basketball'},{id:'tennis',label:'Tennis'}];
