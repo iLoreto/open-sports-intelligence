@@ -1,68 +1,53 @@
 const {test,expect}=require('@playwright/test');
-const url='http://127.0.0.1:4179/nations-live.html';
-const summary={header:{competitions:[{competitors:[{team:{abbreviation:'NY'},score:'69'},{team:{abbreviation:'IND'},score:'80'}],status:{type:{detail:'Q3 4:24'}}}]},plays:[
- {period:{number:1},clock:{displayValue:'11:40'},homeScore:'2',awayScore:'0',scoringPlay:true},
- {period:{number:1},clock:{displayValue:'11:20'},homeScore:'2',awayScore:'3',scoringPlay:true},
- {period:{number:3},clock:{displayValue:'4:24'},homeScore:'80',awayScore:'69',scoringPlay:true}
-]};
-test.beforeEach(async({page})=>{await page.route('**/api/nba/momentum',r=>r.fulfill({status:200,contentType:'application/json',body:JSON.stringify(summary)}))});
-test('legacy monitor opens NBA monitor and removes soccer ticket display',async({page})=>{
- await page.goto(url);await expect(page).toHaveURL(/live-monitor.html/);
- await expect(page.getByRole('heading',{name:/Knicks vs Pacers/})).toBeVisible();
- await expect(page.getByRole('heading',{name:'Tickets'})).toBeVisible();
+const url='http://127.0.0.1:4179/live-monitor.html';
+const competitor=(abbreviation,homeAway,score,stats={})=>({homeAway,team:{abbreviation,shortDisplayName:abbreviation},score:String(score),statistics:Object.entries(stats).map(([name,value])=>({name,displayValue:String(value)}))});
+const event=(id,away,home,as,hs,league)=>({id,status:{type:{state:'in',description:'In Progress',shortDetail:league==='nba'?'Q4 7:42':'P2 12:30'},displayClock:'7:42'},competitions:[{competitors:[competitor(away,'away',as,{rebounds:34,shotsOnGoal:23}),competitor(home,'home',hs,{rebounds:40,shotsOnGoal:27})]}]});
+const payload={fetchedAt:'2026-11-14T02:00:00Z',sources:[{league:'nba',events:[event('nba1','NYK','IND',89,99,'nba')],error:null},{league:'nhl',events:[event('nhl1','NSH','VGK',1,3,'nhl'),event('nhl2','VAN','NYR',2,2,'nhl')],error:null}]};
+test.beforeEach(async({page})=>{await page.route('**/api/live-monitor/scores?**',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(payload)}))});
+test('canonical page and legacy redirect show three ticket game windows',async({page})=>{
+ await page.goto('http://127.0.0.1:4179/nations-live.html');
+ await expect(page).toHaveURL(/live-monitor.html/);
+ await expect(page.getByRole('heading',{name:'Live Ticket Monitor'})).toBeVisible();
+ await expect(page.locator('#matches article')).toHaveCount(3);
  await expect(page.locator('body')).not.toContainText('Scotland');
- await expect(page.locator('body')).not.toContainText('3-leg parlay');
 });
-test('plots complete scoring progression and margin from ESPN plays',async({page})=>{
+test('NBA and NHL tickets show ESPN scores, game status and stats',async({page})=>{
  await page.goto(url);
- await expect(page.getByRole('status')).toContainText('3 scoring checkpoints');
- await expect(page.locator('#ny')).toHaveText('Knicks 69');
- await expect(page.locator('#ind')).toHaveText('Pacers 80');
- await expect(page.locator('#totals polyline')).toHaveCount(2);
- await expect(page.locator('#margin polyline')).toHaveCount(1);
+ await expect(page.getByRole('status')).toContainText('ESPN');
+ const pacers=page.locator('article[aria-label*="Indiana Pacers"]');
+ await expect(pacers).toContainText('99');
+ await expect(pacers).toContainText('89');
+ await expect(pacers).toContainText('Rebounds');
+ const knights=page.locator('article[aria-label*="Vegas Golden Knights"]');
+ await expect(knights).toContainText('3');
+ await expect(knights).toContainText('Shots');
 });
-test('manual refresh updates the live chart without dropping history',async({page})=>{
- await page.goto(url);await expect(page.getByRole('status')).toContainText('3 scoring checkpoints');
- await page.getByRole('button',{name:'Refresh now'}).click();
- await expect(page.locator('#margin polyline')).toHaveCount(1);
+test('league filter switches category without navigation or losing tickets',async({page})=>{
+ await page.goto(url);await expect(page.locator('#matches article')).toHaveCount(3);
+ await page.locator('#league').selectOption('nba');
+ await expect(page.locator('#matches article')).toHaveCount(1);
+ await expect(page).toHaveURL(/live-monitor.html/);
+ await page.locator('#league').selectOption('nhl');
+ await expect(page.locator('#matches article')).toHaveCount(2);
+ await page.locator('#league').selectOption('all');
+ await expect(page.locator('#matches article')).toHaveCount(3);
 });
-test('API failure is clearly identified without fabricated momentum',async({page})=>{
- await page.route('**/api/nba/momentum',r=>r.fulfill({status:503,body:'unavailable'}));
- await page.goto(url);await expect(page.getByRole('status')).toContainText('Data unavailable');
- await expect(page.locator('#margin polyline')).toHaveCount(0);
-});
-
-test('shows all screenshot tickets and reconciles totals',async({page})=>{
- await page.goto(url);
- const overview=page.getByRole('region',{name:'Ticket overview'});
- await expect(overview).toContainText('$119.56');
- await expect(overview).toContainText('$205.84');
- await expect(overview).toContainText('$86.28');
- await expect(page.locator('#ticket-list')).toContainText('Indiana Pacers');
- await expect(page.locator('#ticket-list')).toContainText('Vegas Golden Knights');
- await expect(page.locator('#ticket-list')).toContainText('New York Rangers');
-});
-test('removing a ticket changes monitor totals persistently',async({page})=>{
- await page.goto(url);
+test('remove ticket updates totals and survives reload',async({page})=>{
+ await page.goto(url);await expect(page.locator('#stake')).toHaveText('$119.56');
  await page.getByRole('button',{name:/Remove New York Rangers/}).click();
- await expect(page.getByRole('region',{name:'Ticket overview'})).toContainText('$89.56');
- await page.reload();
- await expect(page.getByRole('region',{name:'Ticket overview'})).toContainText('$89.56');
+ await expect(page.locator('#stake')).toHaveText('$89.56');
+ await page.reload();await expect(page.locator('#matches article')).toHaveCount(2);
+ await expect(page.locator('#stake')).toHaveText('$89.56');
 });
-
-test('monitor script does not leak source text into the rendered page',async({page})=>{
+test('ESPN errors are explicit without fake scores',async({page})=>{
+ await page.route('**/api/live-monitor/scores?**',route=>route.fulfill({status:502,contentType:'application/json',body:'{"error":"ESPN upstream failed"}'}));
+ await page.goto(url);
+ await expect(page.getByRole('status')).toContainText('ESPN unavailable');
+ await expect(page.locator('#matches article')).toHaveCount(3);
+ await expect(page.locator('article[aria-label*="Indiana Pacers"]')).toContainText('Unverified');
+});
+test('inline script runs without browser exceptions',async({page})=>{
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto(url);
- await expect(page.locator('#ticket-list article')).toHaveCount(3);
- await expect(page.locator('body')).not.toContainText('function renderTickets()');
- await expect(page.locator('body')).not.toContainText('toFixed(2)');
- await expect(page.getByRole('region',{name:'Ticket overview'})).toContainText('$119.56');
- await expect(page.locator('#totals polyline')).toHaveCount(2);
+ await page.goto(url);await expect(page.locator('#matches article')).toHaveCount(3);
  expect(errors).toEqual([]);
-});
-
-test('shows explicit upstream error rather than indefinite waiting',async({page})=>{
- await page.route('**/api/nba/momentum',r=>r.fulfill({status:502,contentType:'application/json',body:JSON.stringify({error:'ESPN request failed'})}));
- await page.goto(url);
- await expect(page.getByRole('status')).toContainText('ESPN request failed');
 });

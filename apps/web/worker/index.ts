@@ -78,6 +78,24 @@ function summarize(games: Game[], id: number, sample: number) {
 export default {
   async fetch(request: Request, env: Environment): Promise<Response> {
     const url = new URL(request.url);
+    if (url.pathname === '/api/live-monitor/scores') {
+      if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
+      const day = url.searchParams.get('date') || new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      if (!/^20\d{6}$/.test(day)) return json({ error: 'Invalid date' }, 400);
+      const sources = [{league:'nba',path:'basketball/nba'},{league:'nhl',path:'hockey/nhl'}];
+      const responses = await Promise.all(sources.map(async ({league,path}) => {
+        try {
+          const response = await fetch('https://site.api.espn.com/apis/site/v2/sports/'+path+'/scoreboard?dates='+day+'&limit=100',{headers:{Accept:'application/json'},signal:AbortSignal.timeout(12000)});
+          if (!response.ok) throw new Error('ESPN HTTP '+response.status);
+          const data = await response.json() as {events?:unknown[]};
+          if (!Array.isArray(data.events)) throw new Error('Missing ESPN events');
+          return {league,events:data.events,error:null};
+        } catch(error) {return {league,events:[],error:error instanceof Error?error.message:'ESPN unavailable'};}
+      }));
+      const failed = responses.filter(item=>item.error);
+      if (failed.length===responses.length) return json({error:'Both ESPN scoreboards unavailable',sources:responses},502);
+      return json({source:'ESPN public scoreboards',fetchedAt:new Date().toISOString(),date:day,sources:responses});
+    }
     if (url.pathname === '/api/nba/momentum') {
       if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
       const eventId = '401909296';
