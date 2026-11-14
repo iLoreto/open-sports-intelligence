@@ -41,7 +41,9 @@ function gameFor(t){return scores.find(e=>{
  const teams=e.competitions?.[0]?.competitors||[];
  return e._league===t.league&&teams.some(c=>sameTeam(c,t.home))&&teams.some(c=>sameTeam(c,t.away));
 })}
-function statValue(c,aliases){const a=(c?.statistics||[]).find(x=>aliases.includes(String(x.name||x.abbreviation||x.displayName||'').toLowerCase().replace(/[^a-z]/g,'')));return a?.displayValue??a?.value??null}
+function statValue(c,aliases){const values=Array.isArray(c?.statistics)?c.statistics:[];const a=values.find(x=>aliases.includes(String(x.name||x.abbreviation||x.displayName||x.label||'').toLowerCase().replace(/[^a-z]/g,'')));return a?.displayValue??a?.value??null}
+function boxscoreCompetitor(t,e){const teams=trajectories.get(t.league+':'+e.id)?.teams||[];return teams.find(c=>sameTeam(c,t.home))||null}
+function boxscoreAway(t,e){const teams=trajectories.get(t.league+':'+e.id)?.teams||[];return teams.find(c=>sameTeam(c,t.away))||null}
 function statTile(label,a,b){const el=document.createElement('div');el.className='stat';const title=document.createElement('small');title.textContent=label;const value=document.createElement('b');value.textContent=clean(a)+' / '+clean(b);el.append(title,value);return el}
 function progression(plays,league,event){
  const competitors=event?.competitions?.[0]?.competitors||[];
@@ -78,6 +80,27 @@ function chartSvg(points,mode){
  const lines=mode==='totals'?'<path d="'+path(p=>p.away)+'" stroke="#76bfff"/><path d="'+path(p=>p.home)+'" stroke="#4cda9c"/>':'<path d="'+path(p=>p.home-p.away)+'" stroke="#ffb665"/>';
  return '<svg viewBox="0 0 '+width+' '+height+'" role="img" aria-label="'+(mode==='totals'?'Cumulative scoring trajectory':'Home team scoring lead trajectory')+'">'+baseline+'<g fill="none" stroke-width="3" stroke-linejoin="round" stroke-linecap="round">'+lines+'</g><g fill="#9fb8d2" font-size="11"><text x="4" y="13">'+maxY+'</text><text x="4" y="'+(height-5)+'">'+minY+'</text><text x="'+(width-65)+'" y="'+(height-5)+'">'+maxX.toFixed(0)+' min</text></g></svg>';
 }
+function shotProgression(plays,event){
+ const competitors=event?.competitions?.[0]?.competitors||[];
+ const home=competitors.find(c=>c.homeAway==='home')?.team||{},away=competitors.find(c=>c.homeAway==='away')?.team||{};
+ const result=[{x:0,home:0,away:0}];let h=0,a=0;
+ for(const play of plays){
+  const kind=String(play.type?.text||play.type?.name||play.text||'').toLowerCase();
+  if(!(/shot|goal/.test(kind))||/blocked|missed|shootout/.test(kind))continue;
+  const team=play.team||{},id=String(team.id||play.teamId||'');
+  const ab=String(team.abbreviation||'');
+  const homeMatch=id&&id===String(home.id||'')||ab&&ab===home.abbreviation;
+  const awayMatch=id&&id===String(away.id||'')||ab&&ab===away.abbreviation;
+  if(!homeMatch&&!awayMatch)continue;
+  if(homeMatch)h++;else a++;
+  const period=Number(play.period?.number??play.period),clock=String(play.clock?.displayValue??play.clock??'');
+  const m=clock.match(/^([0-9]+):([0-9]+)/);
+  if(!Number.isFinite(period)||period<1)continue;
+  const elapsed=(period-1)*20+(m?20-(Number(m[1])+Number(m[2])/60):0);
+  result.push({x:Math.max(0,elapsed),home:h,away:a});
+ }
+ return result.length>1?result:[];
+}
 function trajectoryCard(e,t){
  const wrapper=document.createElement('section');wrapper.className='trajectory';
  const heading=document.createElement('h4');heading.textContent='Game trajectory · '+t.league.toUpperCase();wrapper.append(heading);
@@ -86,6 +109,12 @@ function trajectoryCard(e,t){
  const points=progression(data.plays||[],t.league,e);
  if(!points.length){const msg=document.createElement('p');msg.className='muted';msg.textContent=data.error?'Trajectory unavailable: '+data.error:'ESPN has no scored play-by-play checkpoints for this game';wrapper.append(msg);return wrapper}
  const key=document.createElement('p');key.className='key';key.textContent='Blue: '+t.away+' · Green: '+t.home+' · Orange: '+t.home+' lead';wrapper.append(key);
+ if(t.league==='nhl'){
+  const shots=shotProgression(data.plays||[],e);
+  const label=document.createElement('h4');label.textContent='Shot pressure · cumulative shots on goal';wrapper.append(label);
+  if(shots.length){const graph=document.createElement('div');graph.innerHTML=chartSvg(shots,'totals');wrapper.append(graph)}
+  else{const message=document.createElement('p');message.className='muted';message.textContent='ESPN shot-by-shot data unavailable for this game';wrapper.append(message)}
+ }
  for(const [title,mode] of [['Cumulative scoring','totals'],['Lead momentum','margin']]){
   const label=document.createElement('h4');label.textContent=title;wrapper.append(label);
   const graph=document.createElement('div');graph.innerHTML=chartSvg(points,mode);wrapper.append(graph);
@@ -124,7 +153,7 @@ function render(){
   const clock=document.createElement('p');clock.className='muted';clock.textContent=e?statusText(e):'ESPN game not matched for this date';card.append(clock);
   if(e){const stats=document.createElement('div');stats.className='stats';
    const fields=t.league==='nba'?[['FG %',['fieldgoalpct','fieldgoalpercentage']],['Rebounds',['totalrebounds','rebounds']],['Assists',['assists']],['3PT %',['threepointfieldgoalpct','threepointfieldgoalpercentage']],['Turnovers',['turnovers']],['Fouls',['fouls','totalfouls']]]:[['Shots',['shotsongoal','shots']],['Power play',['powerplaygoals','powerplay']],['Hits',['hits']],['Faceoff %',['faceoffpercent','faceoffpct']],['Blocked shots',['blockedshots']],['Penalty min',['penaltyminutes']]];
-   for(const [label,aliases] of fields)stats.append(statTile(label,statValue(away,aliases),statValue(home,aliases)));
+   for(const [label,aliases] of fields)stats.append(statTile(label,statValue(boxscoreAway(t,e),aliases)??statValue(away,aliases),statValue(boxscoreCompetitor(t,e),aliases)??statValue(home,aliases)));
    card.append(stats);
    card.append(trajectoryCard(e,t));
   }
