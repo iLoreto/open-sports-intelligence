@@ -7,12 +7,76 @@
 <section class="panel"><div class="score"><span id="ny">Knicks —</span><span id="ind">Pacers —</span></div><p class="muted" id="clock">Waiting for game data</p></section>
 <section class="panel"><h2>Whole-game scoring trajectory</h2><div class="legend"><span class="orange">Knicks cumulative points</span><span class="green">Pacers cumulative points</span></div><svg id="totals" viewBox="0 0 940 320" role="img" aria-label="Whole game cumulative scoring chart"></svg></section>
 <section class="panel"><h2>Lead momentum</h2><div class="legend"><span class="blue">Pacers lead (positive) / Knicks lead (negative)</span></div><svg id="margin" viewBox="0 0 940 260" role="img" aria-label="Scoring margin over game time"></svg><p class="muted foot">This measures scoreboard momentum, not win probability. Each point is derived from ESPN scoring plays. Refreshes every 60 seconds while the page is visible. Missing or stale data is explicitly reported.</p></section>
-<section class="panel"><h2>Tickets</h2><p class="muted">Soccer tickets have been removed from this monitor. This view does not modify Novig orders or historical ticket records.</p></section>
+<section class="panel" id="tickets"><h2>Active Novig tickets · screenshot snapshot</h2><p class="muted">Recorded November 13, 2026 at 5:52–5:56 PM PT. Not live Novig prices. Soccer tickets are excluded.</p><div id="ticket-list"></div><div id="ticket-summary" class="panel" aria-label="Ticket overview"></div><p class="muted foot">Cash-out quotes are snapshots, not guaranteed execution prices. Removing a ticket here changes monitor totals only, never your Novig account.</p></section>
 </main><script>
 'use strict';
 const GAME_ID='401909296',ENDPOINT='https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event='+GAME_ID;
 const $=id=>document.getElementById(id);
 let loading=false;
+const ticketStoreKey='iloreto:nba-monitor-removed:v1';
+let removed=[];try{removed=JSON.parse(localStorage.getItem(ticketStoreKey)||'[]');if(!Array.isArray(removed))removed=[]}catch{removed=[]}
+const tickets=[
+ {id:'ind-group',name:'Indiana Pacers · Winner vs NY Knicks',stake:54.56,payout:102.06,sell:57.70,price:'52.0% weighted',orders:[{stake:14.68,payout:31.25,price:'45.5%'},{stake:39.87,payout:70.81,price:'54.8%'}]},
+ {id:'vgk',name:'Vegas Golden Knights · Winner vs Nashville',stake:35,payout:58.33,sell:35,price:'60.0%'},
+ {id:'nyr',name:'New York Rangers · Winner vs Vancouver',stake:30,payout:45.45,sell:29.54,price:'66.0%'}
+];
+const money=x=>'
+const n=v=>Number.isFinite(Number(v))?Number(v):0;
+function elapsed(p){const period=n(p.period?.number||p.period);const clock=p.clock?.displayValue||p.clock||'';const parts=String(clock).match(/^(\d+):(\d+)/);const remaining=parts?Number(parts[1])*60+Number(parts[2]):0;return Math.max(0,(period-1)*720+720-remaining)}
+function pointsFromPlay(p){const x=p.scoreValue??p.scoringPlay?.scoreValue;return Number.isFinite(Number(x))?Number(x):0}
+function extract(data){
+ const comp=data.header?.competitions?.[0]||data.boxscore?.teams?.[0]?.competition||{};
+ const teams=comp.competitors||[];
+ const ind=teams.find(t=>t.team?.abbreviation==='IND'),ny=teams.find(t=>t.team?.abbreviation==='NY');
+ const plays=data.plays||[];
+ const rows=[{t:0,ind:0,ny:0}];let lastI=0,lastN=0;
+ for(const p of plays){const t=elapsed(p);const score=p.homeScore!==undefined&&p.awayScore!==undefined?{home:n(p.homeScore),away:n(p.awayScore)}:null;
+  if(score){lastI=score.home;lastN=score.away}
+  else if(p.scoringPlay||pointsFromPlay(p)>0){const abbr=p.team?.abbreviation||'';if(abbr==='IND')lastI+=pointsFromPlay(p);if(abbr==='NY')lastN+=pointsFromPlay(p)}
+  else continue;
+  rows.push({t,ind:lastI,ny:lastN});
+ }
+ rows.sort((a,b)=>a.t-b.t);
+ return {rows,ind:ind?.score??lastI,ny:ny?.score??lastN,status:comp.status?.type?.detail||data.header?.competitions?.[0]?.status?.type?.description||'Game status unavailable',hasPlays:plays.length>0};
+}
+const ns='http://www.w3.org/2000/svg';
+function element(tag,attrs){const e=document.createElementNS(ns,tag);for(const [k,v] of Object.entries(attrs))e.setAttribute(k,String(v));return e}
+function draw(id,rows,kind){
+ const svg=$(id);svg.replaceChildren();const W=940,H=kind==='margin'?260:320,L=58,R=18,T=22,B=38,plotW=W-L-R,plotH=H-T-B;
+ const values=kind==='margin'?rows.map(r=>r.ind-r.ny):rows.flatMap(r=>[r.ind,r.ny]);
+ const low=kind==='margin'?Math.min(-5,...values):0,high=Math.max(5,...values)+3,span=Math.max(1,high-low);
+ const x=t=>L+Math.min(2880,Math.max(0,t))/2880*plotW,y=v=>T+(high-v)/span*plotH;
+ for(let i=0;i<=4;i++){const v=low+(high-low)*i/4;svg.append(element('line',{x1:L,y1:y(v),x2:W-R,y2:y(v),class:'gridline'}));const label=element('text',{x:4,y:y(v)+4,class:'axis'});label.textContent=v.toFixed(0);svg.append(label)}
+ for(let q=0;q<=4;q++){const xx=x(q*720);svg.append(element('line',{x1:xx,y1:T,x2:xx,y2:H-B,class:'gridline'}));const label=element('text',{x:xx-13,y:H-12,class:'axis'});label.textContent=q===0?'Start':'Q'+q;svg.append(label)}
+ const plot=(fn,color)=>{const path=element('polyline',{points:rows.map(r=>x(r.t)+','+y(fn(r))).join(' '),class:'line',stroke:color});svg.append(path)};
+ if(kind==='margin')plot(r=>r.ind-r.ny,'#76bfff');else{plot(r=>r.ny,'#ffb665');plot(r=>r.ind,'#4cda9c')}
+}
+async function refresh(){
+ if(loading)return;loading=true;$('refresh').disabled=true;
+ try{
+  const response=await fetch(ENDPOINT,{cache:'no-store'});if(!response.ok)throw Error('ESPN HTTP '+response.status);
+  const data=extract(await response.json());$('ny').textContent='Knicks '+data.ny;$('ind').textContent='Pacers '+data.ind;$('clock').textContent=data.status;
+  if(!data.hasPlays||data.rows.length<2)throw Error('ESPN has not supplied scoring play-by-play');
+  draw('totals',data.rows,'totals');draw('margin',data.rows,'margin');
+  $('status').textContent='Updated '+new Date().toLocaleTimeString()+' · '+(data.rows.length-1)+' scoring checkpoints';
+ }catch(e){$('status').textContent='Data unavailable: '+e.message+' · previous chart retained'}
+ finally{loading=false;$('refresh').disabled=false}
+}
+$('refresh').addEventListener('click',refresh);setInterval(()=>{if(!document.hidden)refresh()},60000);refresh();
+</script></body></html>+x.toFixed(2);
+function renderTickets(){
+ const root=$('ticket-list');root.replaceChildren();const active=tickets.filter(t=>!removed.includes(t.id));
+ for(const t of active){
+  const card=document.createElement('article');card.className='panel';
+  const title=document.createElement('h3');title.textContent=t.name+' · '+t.price;card.append(title);
+  const detail=document.createElement('p');detail.textContent='Stake '+money(t.stake)+' · Payout '+money(t.payout)+' · Potential profit '+money(t.payout-t.stake)+' · Sell snapshot '+money(t.sell);card.append(detail);
+  if(t.orders){const line=document.createElement('p');line.className='muted';line.textContent=t.orders.map(o=>o.price+' · '+money(o.stake)+' → '+money(o.payout)).join(' | ');card.append(line)}
+  const button=document.createElement('button');button.type='button';button.textContent='Remove ticket';button.setAttribute('aria-label','Remove '+t.name);button.addEventListener('click',()=>{removed.push(t.id);try{localStorage.setItem(ticketStoreKey,JSON.stringify(removed))}catch{}renderTickets()});card.append(button);root.append(card);
+ }
+ const stake=active.reduce((v,t)=>v+t.stake,0),payout=active.reduce((v,t)=>v+t.payout,0),sell=active.reduce((v,t)=>v+t.sell,0);
+ $('ticket-summary').textContent='Stake '+money(stake)+' · Payout '+money(payout)+' · Potential profit '+money(payout-stake)+' · Sell quotes at screenshot '+money(sell);
+}
+renderTickets();
 const n=v=>Number.isFinite(Number(v))?Number(v):0;
 function elapsed(p){const period=n(p.period?.number||p.period);const clock=p.clock?.displayValue||p.clock||'';const parts=String(clock).match(/^(\d+):(\d+)/);const remaining=parts?Number(parts[1])*60+Number(parts[2]):0;return Math.max(0,(period-1)*720+720-remaining)}
 function pointsFromPlay(p){const x=p.scoreValue??p.scoringPlay?.scoreValue;return Number.isFinite(Number(x))?Number(x):0}
