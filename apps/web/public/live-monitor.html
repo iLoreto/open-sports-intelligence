@@ -77,46 +77,4 @@ async function refresh(){
  finally{loading=false;$('refresh').disabled=false}
 }
 $('refresh').addEventListener('click',refresh);setInterval(()=>{if(!document.hidden)refresh()},60000);refresh();
-const n=v=>Number.isFinite(Number(v))?Number(v):0;
-function elapsed(p){const period=n(p.period?.number||p.period);const clock=p.clock?.displayValue||p.clock||'';const parts=String(clock).match(/^(\d+):(\d+)/);const remaining=parts?Number(parts[1])*60+Number(parts[2]):0;return Math.max(0,(period-1)*720+720-remaining)}
-function pointsFromPlay(p){const x=p.scoreValue??p.scoringPlay?.scoreValue;return Number.isFinite(Number(x))?Number(x):0}
-function extract(data){
- const comp=data.header?.competitions?.[0]||data.boxscore?.teams?.[0]?.competition||{};
- const teams=comp.competitors||[];
- const ind=teams.find(t=>t.team?.abbreviation==='IND'),ny=teams.find(t=>t.team?.abbreviation==='NY');
- const plays=data.plays||[];
- const rows=[{t:0,ind:0,ny:0}];let lastI=0,lastN=0;
- for(const p of plays){const t=elapsed(p);const score=p.homeScore!==undefined&&p.awayScore!==undefined?{home:n(p.homeScore),away:n(p.awayScore)}:null;
-  if(score){lastI=score.home;lastN=score.away}
-  else if(p.scoringPlay||pointsFromPlay(p)>0){const abbr=p.team?.abbreviation||'';if(abbr==='IND')lastI+=pointsFromPlay(p);if(abbr==='NY')lastN+=pointsFromPlay(p)}
-  else continue;
-  rows.push({t,ind:lastI,ny:lastN});
- }
- rows.sort((a,b)=>a.t-b.t);
- return {rows,ind:ind?.score??lastI,ny:ny?.score??lastN,status:comp.status?.type?.detail||data.header?.competitions?.[0]?.status?.type?.description||'Game status unavailable',hasPlays:plays.length>0};
-}
-const ns='http://www.w3.org/2000/svg';
-function element(tag,attrs){const e=document.createElementNS(ns,tag);for(const [k,v] of Object.entries(attrs))e.setAttribute(k,String(v));return e}
-function draw(id,rows,kind){
- const svg=$(id);svg.replaceChildren();const W=940,H=kind==='margin'?260:320,L=58,R=18,T=22,B=38,plotW=W-L-R,plotH=H-T-B;
- const values=kind==='margin'?rows.map(r=>r.ind-r.ny):rows.flatMap(r=>[r.ind,r.ny]);
- const low=kind==='margin'?Math.min(-5,...values):0,high=Math.max(5,...values)+3,span=Math.max(1,high-low);
- const x=t=>L+Math.min(2880,Math.max(0,t))/2880*plotW,y=v=>T+(high-v)/span*plotH;
- for(let i=0;i<=4;i++){const v=low+(high-low)*i/4;svg.append(element('line',{x1:L,y1:y(v),x2:W-R,y2:y(v),class:'gridline'}));const label=element('text',{x:4,y:y(v)+4,class:'axis'});label.textContent=v.toFixed(0);svg.append(label)}
- for(let q=0;q<=4;q++){const xx=x(q*720);svg.append(element('line',{x1:xx,y1:T,x2:xx,y2:H-B,class:'gridline'}));const label=element('text',{x:xx-13,y:H-12,class:'axis'});label.textContent=q===0?'Start':'Q'+q;svg.append(label)}
- const plot=(fn,color)=>{const path=element('polyline',{points:rows.map(r=>x(r.t)+','+y(fn(r))).join(' '),class:'line',stroke:color});svg.append(path)};
- if(kind==='margin')plot(r=>r.ind-r.ny,'#76bfff');else{plot(r=>r.ny,'#ffb665');plot(r=>r.ind,'#4cda9c')}
-}
-async function refresh(){
- if(loading)return;loading=true;$('refresh').disabled=true;
- try{
-  const response=await fetch(ENDPOINT,{cache:'no-store'});if(!response.ok)throw Error('ESPN HTTP '+response.status);
-  const data=extract(await response.json());$('ny').textContent='Knicks '+data.ny;$('ind').textContent='Pacers '+data.ind;$('clock').textContent=data.status;
-  if(!data.hasPlays||data.rows.length<2)throw Error('ESPN has not supplied scoring play-by-play');
-  draw('totals',data.rows,'totals');draw('margin',data.rows,'margin');
-  $('status').textContent='Updated '+new Date().toLocaleTimeString()+' · '+(data.rows.length-1)+' scoring checkpoints';
- }catch(e){$('status').textContent='Data unavailable: '+e.message+' · previous chart retained'}
- finally{loading=false;$('refresh').disabled=false}
-}
-$('refresh').addEventListener('click',refresh);setInterval(()=>{if(!document.hidden)refresh()},60000);refresh();
 </script></body></html>
