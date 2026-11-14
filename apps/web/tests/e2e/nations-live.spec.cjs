@@ -49,3 +49,14 @@ test('removing a ticket changes monitor totals persistently',async({page})=>{
  await page.reload();
  await expect(page.getByRole('region',{name:'Ticket overview'})).toContainText('$89.56');
 });
+
+test('monitor script does not leak source text into the rendered page',async({page})=>{
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto(url);
+ await expect(page.locator('#ticket-list article')).toHaveCount(3);
+ await expect(page.locator('body')).not.toContainText('function renderTickets()');
+ await expect(page.locator('body')).not.toContainText('toFixed(2)');
+ await expect(page.getByRole('region',{name:'Ticket overview'})).toContainText('$119.56');
+ await expect(page.locator('#totals polyline')).toHaveCount(2);
+ expect(errors).toEqual([]);
+});
