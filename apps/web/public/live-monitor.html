@@ -34,10 +34,10 @@ function state(e){const t=e?.status?.type||e?.competitions?.[0]?.status?.type||{
 function statusText(e){const c=e?.competitions?.[0],s=e?.status||c?.status||{};return [s.type?.shortDetail||s.type?.detail||s.type?.description||state(e),s.displayClock].filter(Boolean).join(' · ')}
 function sameTeam(competitor,abbr){
  const code=String(competitor?.team?.abbreviation||'').toUpperCase();
- const aliases={MIL:['MIL'],LAD:['LAD'],MEM:['MEM'],NOP:['NOP'],OKC:['OKC'],LAC:['LAC'],NYK:['NY','NYK'],IND:['IND'],VGK:['VGK','VEG'],NSH:['NSH'],NYR:['NYR'],VAN:['VAN']};
+ const aliases={IRL:['IRL','IRE'],AUT:['AUT'],POR:['POR'],NIR:['NIR','NIE'],ENG:['ENG'],SCO:['SCO'],WAL:['WAL'],FRA:['FRA'],ITA:['ITA'],ESP:['ESP'],GER:['GER'],NED:['NED'],NOR:['NOR'],SUI:['SUI'],CRO:['CRO'],FIN:['FIN'],ALB:['ALB'],BEL:['BEL'],DEN:['DEN'],SWE:['SWE'],POL:['POL'],TUR:['TUR'],UKR:['UKR'],MIL:['MIL'],LAD:['LAD'],MEM:['MEM'],NOP:['NOP'],OKC:['OKC'],LAC:['LAC'],NYK:['NY','NYK'],IND:['IND'],VGK:['VGK','VEG'],NSH:['NSH'],NYR:['NYR'],VAN:['VAN']};
  if((aliases[abbr]||[abbr]).includes(code))return true;
  const name=String(competitor?.team?.displayName||competitor?.team?.shortDisplayName||'').toLowerCase();
- const names={MIL:'brewers',LAD:'dodgers',MEM:'grizzlies',NOP:'pelicans',OKC:'thunder',LAC:'clippers',NYK:'knicks',IND:'pacers',VGK:'golden knights',NSH:'predators',NYR:'rangers',VAN:'canucks'};
+ const names={IRL:'ireland',AUT:'austria',POR:'portugal',NIR:'northern ireland',ENG:'england',SCO:'scotland',WAL:'wales',FRA:'france',ITA:'italy',ESP:'spain',GER:'germany',NED:'netherlands',NOR:'norway',SUI:'switzerland',CRO:'croatia',FIN:'finland',ALB:'albania',BEL:'belgium',DEN:'denmark',SWE:'sweden',POL:'poland',TUR:'turkey',UKR:'ukraine',MIL:'brewers',LAD:'dodgers',MEM:'grizzlies',NOP:'pelicans',OKC:'thunder',LAC:'clippers',NYK:'knicks',IND:'pacers',VGK:'golden knights',NSH:'predators',NYR:'rangers',VAN:'canucks'};
  return !!names[abbr]&&name.includes(names[abbr]);
 }
 function gameFor(t){return scores.find(e=>{
@@ -161,7 +161,7 @@ function trajectoryCard(e,t){
  return wrapper;
 }
 async function loadTrajectories(){
- const games=[...new Map(tickets.filter(t=>!removed.includes(t.id)&&['nba','nhl'].includes(t.league)).map(t=>[t.id,{t,e:gameFor(t)}]).filter(x=>x[1].e?.id).map(([id,item])=>[item.t.league+':'+item.e.id,item])).values()];
+ const games=[...new Map(tickets.filter(t=>!removed.includes(t.id)&&['nba','nhl','soccer'].includes(t.league)).map(t=>[t.id,{t,e:gameFor(t)}]).filter(x=>x[1].e?.id).map(([id,item])=>[item.t.league+':'+item.e.id,item])).values()];
  await Promise.all(games.map(async({t,e})=>{
   const key=t.league+':'+e.id;
   try{const response=await fetch('/api/live-monitor/trajectory?league='+t.league+'&event='+encodeURIComponent(e.id),{cache:'no-store',signal:AbortSignal.timeout(15000)});const data=await response.json();trajectories.set(key,response.ok?data:{error:data.error||'ESPN unavailable'})}
@@ -191,8 +191,8 @@ function render(){
   line.append(names,points);card.append(line);
   const clock=document.createElement('p');clock.className='muted';clock.textContent=e?statusText(e):'ESPN game not matched for this date';card.append(clock);
   if(e){const stats=document.createElement('div');stats.className='stats';
-   const fields=t.league==='soccer'?[]:t.league==='nba'?[['FG %',['fieldgoalpct','fieldgoalpercentage']],['Rebounds',['totalrebounds','rebounds']],['Assists',['assists']],['3PT %',['threepointfieldgoalpct','threepointfieldgoalpercentage']],['Turnovers',['turnovers']],['Fouls',['fouls','totalfouls']]]:[['Shots',['shotsongoal','shots','sog','totalshotsongoal','shotsongoalfor']],['Power play',['powerplaygoals','powerplaygoalsattempts','powerplayopportunities','powerplaychances','powerplays','powerplaygoalsfor']],['Hits',['hits']],['Faceoff %',['faceoffpercent','faceoffpct']],['Blocked shots',['blockedshots']],['Penalty min',['penaltyminutes']]];
-   for(const [label,aliases] of fields){const pregame=state(e)==='Scheduled';stats.append(statTile(label,pregame?'0':nhlStat(t,e,t.away,aliases),pregame?'0':nhlStat(t,e,t.home,aliases)))}
+   const fields=t.league==='soccer'?[['Possession',['possessionpct','possession','ballpossession']],['Shots',['totalshots','shots','totalshotsongoal']],['Shots on target',['shotsontarget','shotsongoal']],['Corners',['cornerkicks','corners']],['Fouls',['fouls','foulscommitted']],['Yellow cards',['yellowcards','yellowcardsreceived']],['Red cards',['redcards','redcardsreceived']]]:t.league==='nba'?[['FG %',['fieldgoalpct','fieldgoalpercentage']],['Rebounds',['totalrebounds','rebounds']],['Assists',['assists']],['3PT %',['threepointfieldgoalpct','threepointfieldgoalpercentage']],['Turnovers',['turnovers']],['Fouls',['fouls','totalfouls']]]:[['Shots',['shotsongoal','shots','sog','totalshotsongoal','shotsongoalfor']],['Power play',['powerplaygoals','powerplaygoalsattempts','powerplayopportunities','powerplaychances','powerplays','powerplaygoalsfor']],['Hits',['hits']],['Faceoff %',['faceoffpercent','faceoffpct']],['Blocked shots',['blockedshots']],['Penalty min',['penaltyminutes']]];
+   for(const [label,aliases] of fields){const pregame=state(e)==='Scheduled';stats.append(statTile(label,pregame?'Unavailable':nhlStat(t,e,t.away,aliases),pregame?'Unavailable':nhlStat(t,e,t.home,aliases)))}
    card.append(stats);
    if(t.league!=='soccer')card.append(trajectoryCard(e,t));
   }
