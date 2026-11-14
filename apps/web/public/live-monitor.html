@@ -5,7 +5,7 @@
 </style></head><body><main>
 <nav aria-label="Monitor navigation" style="margin-bottom:16px"><a href="/" class="secondary" style="display:inline-block;padding:10px 15px;border:1px solid #6292b9;border-radius:9px;text-decoration:none">← Back to Sports Radar</a></nav>
 <header><div><div class="eyebrow">iLORETO DEVELOPMENT · SPORTS RADAR</div><h1>Live Ticket Monitor</h1><div class="muted">NBA + NHL · ESPN game windows · Novig ticket snapshot</div></div><div class="toolbar"><button id="refresh">Refresh ESPN scores</button><span class="muted" id="score-status" role="status">Loading ESPN…</span></div></header>
-<section class="layout" aria-label="Ticket overview" role="region">
+<section class="panel" aria-label="Import Novig ticket"><div class="toolbar"><h2 style="flex:1;margin:0">Import Novig ticket</h2><label for="ticket-image" style="background:#17568c;border:1px solid #6292b9;border-radius:9px;padding:9px 13px;cursor:pointer">📷 Select screenshot</label><input id="ticket-image" type="file" accept="image/*" style="position:absolute;width:1px;height:1px;opacity:0" aria-label="Novig screenshot"></div><p id="ocr-status" class="muted" role="status">Image is processed locally and discarded after OCR. Only confirmed ticket fields are saved.</p><form id="ocr-preview" hidden><div class="toolbar"><label>League <select id="ocr-league"><option value="nba">NBA</option><option value="nhl">NHL</option></select></label><label>Away <input id="ocr-away" required maxlength="5" placeholder="LAC"></label><label>Home <input id="ocr-home" required maxlength="5" placeholder="OKC"></label><label>Pick <input id="ocr-pick" required maxlength="5" placeholder="OKC"></label><label>Stake <input id="ocr-stake" type="number" step=".01" min=".01" required></label><label>Payout <input id="ocr-payout" type="number" step=".01" min=".01" required></label><label>Entry % <input id="ocr-entry" type="number" min="1" max="99.99" step=".01"></label><button type="submit">Add verified ticket</button><button type="button" id="ocr-cancel" class="secondary">Cancel</button></div></form></section><section class="layout" aria-label="Ticket overview" role="region">
 <div class="metric"><small>Stake</small><strong id="stake">$119.56</strong></div>
 <div class="metric"><small>Payout</small><strong id="payout">$205.84</strong></div>
 <div class="metric"><small>Potential profit</small><strong id="profit">$86.28</strong></div>
@@ -17,11 +17,13 @@
 'use strict';
 const $=id=>document.getElementById(id),money=v=>'$'+Number(v).toFixed(2);
 const KEY='iloreto:live-monitor-removed:v1',LEGACY='iloreto:nba-monitor-removed:v1';
+const IMPORT_KEY='iloreto:live-monitor-imports:v1';
 const tickets=[
 {id:'ind-group',league:'nba',home:'IND',away:'NYK',pick:'IND',name:'Indiana Pacers · Winner vs NY Knicks',stake:54.56,payout:102.06,sell:57.70,entry:'52.0% weighted',orders:[{stake:14.68,payout:31.25,price:'45.5%'},{stake:39.87,payout:70.81,price:'54.8%'}]},
 {id:'vgk',league:'nhl',home:'VGK',away:'NSH',pick:'VGK',name:'Vegas Golden Knights · Winner vs Nashville',stake:35,payout:58.33,sell:35,entry:'60.0%'},
 {id:'nyr',league:'nhl',home:'NYR',away:'VAN',pick:'NYR',name:'New York Rangers · Winner vs Vancouver',stake:30,payout:45.45,sell:29.54,entry:'66.0%'}
 ];
+try{const imports=JSON.parse(localStorage.getItem(IMPORT_KEY)||'[]');if(Array.isArray(imports))for(const t of imports)if(t&&typeof t.id==='string'&&['nba','nhl'].includes(t.league)&&Number.isFinite(t.stake)&&Number.isFinite(t.payout))tickets.push(t)}catch{}
 let removed=[];try{const a=JSON.parse(localStorage.getItem(KEY)||localStorage.getItem(LEGACY)||'[]');if(Array.isArray(a))removed=a}catch{}
 let scores=[],sources=[],fetchedAt='';const trajectories=new Map();
 function clean(v){return String(v??'—')}
@@ -32,10 +34,10 @@ function state(e){const t=e?.status?.type||e?.competitions?.[0]?.status?.type||{
 function statusText(e){const c=e?.competitions?.[0],s=e?.status||c?.status||{};return [s.type?.shortDetail||s.type?.detail||s.type?.description||state(e),s.displayClock].filter(Boolean).join(' · ')}
 function sameTeam(competitor,abbr){
  const code=String(competitor?.team?.abbreviation||'').toUpperCase();
- const aliases={NYK:['NY','NYK'],IND:['IND'],VGK:['VGK','VEG'],NSH:['NSH'],NYR:['NYR'],VAN:['VAN']};
+ const aliases={OKC:['OKC'],LAC:['LAC'],NYK:['NY','NYK'],IND:['IND'],VGK:['VGK','VEG'],NSH:['NSH'],NYR:['NYR'],VAN:['VAN']};
  if((aliases[abbr]||[abbr]).includes(code))return true;
  const name=String(competitor?.team?.displayName||competitor?.team?.shortDisplayName||'').toLowerCase();
- const names={NYK:'knicks',IND:'pacers',VGK:'golden knights',NSH:'predators',NYR:'rangers',VAN:'canucks'};
+ const names={OKC:'thunder',LAC:'clippers',NYK:'knicks',IND:'pacers',VGK:'golden knights',NSH:'predators',NYR:'rangers',VAN:'canucks'};
  return !!names[abbr]&&name.includes(names[abbr]);
 }
 function gameFor(t){return scores.find(e=>{
@@ -209,6 +211,51 @@ function render(){
   card.append(info);root.append(card);
  }
 }
+// OCR runs entirely in this tab; no screenshot bytes are sent to our server or persisted.
+const ocrInput=$('ticket-image'),ocrPreview=$('ocr-preview'),ocrStatus=$('ocr-status');
+const abbreviations={THUNDER:'OKC',CLIPPERS:'LAC',PACERS:'IND',KNICKS:'NYK',LAKERS:'LAL',CELTICS:'BOS',WARRIORS:'GS',NUGGETS:'DEN',CAVALIERS:'CLE',MAVERICKS:'DAL',ROCKETS:'HOU',BUCKS:'MIL',SUNS:'PHX',TIMBERWOLVES:'MIN',GRIZZLIES:'MEM',SPURS:'SA',HEAT:'MIA',MAGIC:'ORL',BULLS:'CHI',HAWKS:'ATL',PISTONS:'DET',NETS:'BKN',KINGS:'SAC',JAZZ:'UTAH',RAPTORS:'TOR',SIXERS:'PHI',PELICANS:'NO',TRAILBLAZERS:'POR',WIZARDS:'WSH',GOLDENKNIGHTS:'VGK',PREDATORS:'NSH',RANGERS:'NYR',CANUCKS:'VAN'};
+function parseNovig(text){
+ const upper=text.toUpperCase(),lines=upper.split(/\n/).map(x=>x.trim()).filter(Boolean);
+ const cash=[...text.matchAll(/\$\s*([\d,]+\.\d{2})/g)].map(m=>Number(m[1].replaceAll(',','')));
+ const amount=text.match(/Amount\s*\n?\s*\$?\s*([\d,]+\.\d{2})/i),pay=text.match(/To\s*Pay\s*\n?\s*\$?\s*([\d,]+\.\d{2})/i);
+ const codes=lines.flatMap(l=>l.match(/\b[A-Z]{2,5}\b/g)||[]).map(c=>abbreviations[c]||c);
+ const teams=codes.filter(c=>['OKC','LAC','IND','NYK','LAL','BOS','GS','DEN','CLE','DAL','HOU','MIL','PHX','MIN','MEM','SA','MIA','ORL','CHI','ATL','DET','BKN','SAC','UTAH','TOR','PHI','NO','POR','WSH','VGK','NSH','NYR','VAN'].includes(c));
+ const unique=[...new Set(teams)],pick=teams[0]||'';
+ const pct=text.match(/(\d{1,2}(?:\.\d+)?)\s*%/);
+ return {away:unique[1]||'',home:unique[0]||'',pick,stake:amount?Number(amount[1].replaceAll(',','')):cash[0]||'',payout:pay?Number(pay[1].replaceAll(',','')):cash[1]||'',entry:pct?pct[1]:''};
+}
+ocrInput.addEventListener('change',async()=>{
+ const file=ocrInput.files?.[0];if(!file)return;
+ ocrPreview.hidden=true;ocrStatus.textContent='Reading screenshot locally…';
+ let worker=null,blobUrl=null;
+ try{
+  if(!file.type.startsWith('image/')||file.size>12*1024*1024)throw Error('Select an image under 12 MB');
+  if(!window.Tesseract){
+   await new Promise((resolve,reject)=>{const script=document.createElement('script');script.src='https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';script.onload=resolve;script.onerror=()=>reject(Error('OCR library unavailable'));document.head.append(script)});
+  }
+  blobUrl=URL.createObjectURL(file);
+  worker=await Tesseract.createWorker('eng');
+  const result=await worker.recognize(blobUrl);
+  const parsed=parseNovig(result.data.text||'');
+  for(const field of ['away','home','pick','stake','payout','entry'])$('ocr-'+field).value=parsed[field];
+  $('ocr-league').value=['VGK','NSH','NYR','VAN'].some(t=>[parsed.home,parsed.away].includes(t))?'nhl':'nba';
+  ocrPreview.hidden=false;ocrStatus.textContent='Review the extracted fields before adding. The screenshot is not saved.';
+ }catch(error){ocrStatus.textContent='OCR failed: '+error.message+'. Select another screenshot.'}
+ finally{if(worker)await worker.terminate();if(blobUrl)URL.revokeObjectURL(blobUrl);ocrInput.value='';}
+});
+$('ocr-cancel').onclick=()=>{ocrPreview.hidden=true;ocrStatus.textContent='Import cancelled; no ticket saved.'};
+ocrPreview.addEventListener('submit',event=>{
+ event.preventDefault();
+ const league=$('ocr-league').value,home=$('ocr-home').value.trim().toUpperCase(),away=$('ocr-away').value.trim().toUpperCase(),pick=$('ocr-pick').value.trim().toUpperCase();
+ const stake=Number($('ocr-stake').value),payout=Number($('ocr-payout').value),entry=$('ocr-entry').value;
+ if(!home||!away||home===away||![home,away].includes(pick)||!Number.isFinite(stake)||stake<=0||!Number.isFinite(payout)||payout<=0){ocrStatus.textContent='Correct the teams, pick, stake, and payout before saving.';return}
+ const existing=tickets.some(t=>!removed.includes(t.id)&&t.league===league&&t.home===home&&t.away===away&&t.pick===pick&&Math.abs(t.stake-stake)<.005&&Math.abs(t.payout-payout)<.005);
+ if(existing){ocrStatus.textContent='Possible duplicate ticket; nothing was added.';return}
+ const ticket={id:'ocr-'+crypto.randomUUID(),league,home,away,pick,name:pick+' · Winner vs '+(pick===home?away:home),stake,payout,entry:entry?entry+'%':'unavailable'};
+ tickets.push(ticket);
+ try{localStorage.setItem(IMPORT_KEY,JSON.stringify(tickets.filter(t=>t.id.startsWith('ocr-'))))}catch{tickets.pop();ocrStatus.textContent='Could not save ticket locally; storage unavailable.';return}
+ ocrPreview.hidden=true;ocrStatus.textContent='Ticket added. Screenshot discarded.';render();loadTrajectories();
+});
 let busy=false;
 async function refresh(){
  if(busy)return;busy=true;$('refresh').disabled=true;$('score-status').textContent='Updating ESPN…';
