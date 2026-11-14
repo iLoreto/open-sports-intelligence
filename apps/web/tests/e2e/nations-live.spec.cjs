@@ -99,3 +99,12 @@ test('NHL trajectory never erases a scored goal when later ESPN plays report 0-0
  await page.goto(url);
  await expect(page.locator('article[aria-label*="New York Rangers"] .trajectory svg')).toHaveCount(2);
 });
+
+test('scheduled NHL games show zero statistics and no misleading trajectory',async({page})=>{
+ await page.goto(url);
+ const vegas=page.locator('article[aria-label*="Vegas Golden Knights"]');
+ await expect(vegas.getByText('Game has not started · 0–0')).toBeVisible();
+ await expect(vegas.locator('.stats')).not.toContainText('17 / 17');
+ await expect(vegas.locator('.stats')).toContainText('0 / 0');
+ await expect(vegas.locator('.trajectory svg')).toHaveCount(0);
+});
