@@ -45,3 +45,14 @@ test('OCR fallback accepts ticket when Novig logo is misread', () => {
 test('OCR fallback still rejects non-Novig unrelated market', () => {
  assert.throws(() => parse('OTHER PLATFORM\nAmount $25.00 To Pay $40.32\nIRL 11:45 AM AUT'), /recognized Novig/);
 });
+
+test('soccer selection does not absorb NOVIG logo prefix', () => {
+ const result=parse('NJ NOVIG\nAustria Yes ° 62.0%\nRegular Time 3-Way Winner\nAmount To Pay\n$25.00 $40.32\nIRL 11:45 AM AUT');
+ assert.equal(result.pick,'AUT');
+ assert.equal(result.entry,'62.0');
+});
+test('soccer fixture supports Today between team abbreviations', () => {
+ const result=parse('NOVIG\nAustria Yes • 62.0%\nRegular Time 3-Way Winner\nAmount $25.00\nTo Pay $40.32\nIRL 11:45 AM Today AUT');
+ assert.equal(result.away,'IRL');
+ assert.equal(result.home,'AUT');
+});
