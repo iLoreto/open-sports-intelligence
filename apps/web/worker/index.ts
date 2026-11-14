@@ -105,9 +105,9 @@ export default {
       try {
         const upstream=await fetch('https://site.api.espn.com/apis/site/v2/sports/'+sport+'/summary?event='+event,{headers:{Accept:'application/json'},signal:AbortSignal.timeout(12000)});
         if(!upstream.ok) return json({error:'ESPN summary HTTP '+upstream.status},502);
-        const payload=await upstream.json() as {plays?:unknown[];scoringPlays?:unknown[]};
+        const payload=await upstream.json() as {plays?:unknown[];scoringPlays?:unknown[];boxscore?:{teams?:unknown[]}};
         const plays=Array.isArray(payload.plays)?payload.plays:Array.isArray(payload.scoringPlays)?payload.scoringPlays:[];
-        return json({source:'ESPN',event,league,plays,fetchedAt:new Date().toISOString()});
+        return json({source:'ESPN',event,league,plays,teams:payload.boxscore?.teams||[],fetchedAt:new Date().toISOString()});
       }catch(error){return json({error:error instanceof Error?error.message:'ESPN summary unavailable'},502)}
     }
     if (url.pathname === '/api/nba/momentum') {
