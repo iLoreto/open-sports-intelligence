@@ -229,13 +229,17 @@ function parseNovig(text){
  if(soccer){
   const countries={AUSTRIA:'AUT',IRELAND:'IRL',PORTUGAL:'POR',NORTHERNIRELAND:'NIR',ENGLAND:'ENG',SCOTLAND:'SCO',WALES:'WAL',FRANCE:'FRA',ITALY:'ITA',SPAIN:'ESP',GERMANY:'GER',NETHERLANDS:'NED',NORWAY:'NOR',SWITZERLAND:'SUI',CROATIA:'CRO',FINLAND:'FIN',ALBANIA:'ALB',BELGIUM:'BEL',DENMARK:'DEN',SWEDEN:'SWE',POLAND:'POL',TURKEY:'TUR',UKRAINE:'UKR',GREECE:'GRE',SERBIA:'SRB',CZECHIA:'CZE',SLOVAKIA:'SVK',HUNGARY:'HUN',ROMANIA:'ROU'};
   const normalize=v=>v.replace(/[^A-Z]/g,'');
-  const selection=upper.match(/([A-Z][A-Z ]{1,35}?)\s+YES\s+[^A-Z\d]{0,4}(\d{1,2}(?:\.\d+)?)\s*%/);
-  const pick=selection&&countries[normalize(selection[1].trim())];
+  // Identify the exact known country immediately before YES; avoid absorbing the logo.
+  const yes=upper.match(/\bYES\s*[^A-Z\d]{0,6}(\d{1,2}(?:\.\d+)?)\s*%/);
+  const beforeYes=yes?upper.slice(Math.max(0,yes.index-55),yes.index).trim():'';
+  const countryName=Object.keys(countries).sort((a,b)=>b.length-a.length).find(name=>normalize(beforeYes).endsWith(name));
+  const pick=countryName?countries[countryName]:null;
   const afterPay=upper.slice(paired?paired.index+paired[0].length:pay.index+pay[0].length).split(/PLACED\s*:/)[0];
-  const matchup=afterPay.match(/\b([A-Z]{3})\s+(?:\d{1,2}:\d{2}\s*(?:AM|PM)?\s*(?:TODAY|TOMORROW)?\s*)?([A-Z]{3})\b/);
-  const teams=matchup?[matchup[1],matchup[2]]:[...afterPay.matchAll(/\b[A-Z]{3}\b/g)].map(m=>m[0]).filter(code=>Object.values(countries).includes(code));
+  // OCR often places TODAY between the two abbreviations.
+  const valid=new Set(Object.values(countries));
+  const teams=[...new Set([...afterPay.matchAll(/\b[A-Z]{3}\b/g)].map(m=>m[0]).filter(code=>valid.has(code)))].slice(0,2);
   if(!pick||teams.length<2||!teams.includes(pick)||teams[0]===teams[1])throw Error('Soccer selection or matchup could not be verified');
-  return {platform:'novig',league:'soccer',away:teams[0],home:teams[1],pick,stake,payout,entry:selection[2],market:'Regular Time 3-Way Winner'};
+  return {platform:'novig',league:'soccer',away:teams[0],home:teams[1],pick,stake,payout,entry:yes[1],market:'Regular Time 3-Way Winner'};
  }
  if(!/WINNER/.test(upper))throw Error('Unrecognized Novig market');
  const selected=upper.match(/\b([A-Z]{2,5})\s*(\d{1,2}(?:\.\d+)?)\s*%\s*WINNER/);
