@@ -89,3 +89,13 @@ test('missing play-by-play reports unavailable instead of inventing charts',asyn
 });
 
 test('live monitor has back navigation',async({page})=>{await page.goto(url);await expect(page.getByRole('link',{name:/Back to Sports Radar/})).toHaveAttribute('href','/');});
+
+test('NHL trajectory never erases a scored goal when later ESPN plays report 0-0',async({page})=>{
+ await page.route('**/api/live-monitor/trajectory?**',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({teams:[],plays:[
+ {period:{number:1},clock:{displayValue:'17:00'},homeScore:0,awayScore:0},
+ {period:{number:1},clock:{displayValue:'15:00'},type:{text:'Goal'},scoringPlay:true,team:{id:'2',abbreviation:'NYR'},homeScore:1,awayScore:0},
+ {period:{number:1},clock:{displayValue:'14:00'},homeScore:0,awayScore:0}
+ ]})}));
+ await page.goto(url);
+ await expect(page.locator('article[aria-label*="New York Rangers"] .trajectory svg')).toHaveCount(2);
+});
