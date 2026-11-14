@@ -96,6 +96,20 @@ export default {
       if (failed.length===responses.length) return json({error:'Both ESPN scoreboards unavailable',sources:responses},502);
       return json({source:'ESPN public scoreboards',fetchedAt:new Date().toISOString(),date:day,sources:responses});
     }
+    if (url.pathname === '/api/live-monitor/trajectory') {
+      if (request.method !== 'GET') return json({error:'Method not allowed'},405);
+      const league=url.searchParams.get('league');
+      const event=url.searchParams.get('event');
+      if (!['nba','nhl'].includes(league||'') || !event || !/^\\d{6,12}$/.test(event)) return json({error:'Invalid league or ESPN event'},400);
+      const sport=league==='nba'?'basketball/nba':'hockey/nhl';
+      try {
+        const upstream=await fetch('https://site.api.espn.com/apis/site/v2/sports/'+sport+'/summary?event='+event,{headers:{Accept:'application/json'},signal:AbortSignal.timeout(12000)});
+        if(!upstream.ok) return json({error:'ESPN summary HTTP '+upstream.status},502);
+        const payload=await upstream.json() as {plays?:unknown[];scoringPlays?:unknown[]};
+        const plays=Array.isArray(payload.plays)?payload.plays:Array.isArray(payload.scoringPlays)?payload.scoringPlays:[];
+        return json({source:'ESPN',event,league,plays,fetchedAt:new Date().toISOString()});
+      }catch(error){return json({error:error instanceof Error?error.message:'ESPN summary unavailable'},502)}
+    }
     if (url.pathname === '/api/nba/momentum') {
       if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
       const eventId = '401909296';
