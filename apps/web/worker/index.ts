@@ -78,6 +78,21 @@ function summarize(games: Game[], id: number, sample: number) {
 export default {
   async fetch(request: Request, env: Environment): Promise<Response> {
     const url = new URL(request.url);
+    if (url.pathname === '/api/nba/momentum') {
+      if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
+      const eventId = '401909296';
+      try {
+        const upstream = await fetch('https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=' + eventId, {
+          headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(12000)
+        });
+        if (!upstream.ok) return json({ error: 'ESPN returned HTTP ' + upstream.status }, 502);
+        const payload = await upstream.json() as { plays?: unknown[]; header?: unknown };
+        if (!Array.isArray(payload.plays)) return json({ error: 'ESPN play-by-play not available' }, 502);
+        return json({ ...payload, fetchedAt: new Date().toISOString(), source: 'ESPN' });
+      } catch (error) {
+        return json({ error: error instanceof Error ? error.message : 'ESPN request failed' }, 502);
+      }
+    }
     if (url.pathname === '/api/health') return json({ status: 'ok', activeSports: ['nba', 'tennis'], backgroundScanning: false });
     if (url.pathname === '/api/nhl/xg-comparison') {
       if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
