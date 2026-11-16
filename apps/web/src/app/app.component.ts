@@ -8,9 +8,19 @@ interface Team { id: number | string; full_name: string; abbreviation?: string }
 interface Stats { games: number; wins: number; losses: number; ties?: number; pointsFor: number | null; pointsAgainst: number | null; recent: { date: string; scored: number; allowed: number; win: boolean }[] }
 interface NhlXgTeam { abbreviation: string; games: number; xgShare: number; xgf60: number; xga60: number; xgd60: number; highDangerFor: number; highDangerAgainst: number }
 interface NhlXgComparison { source: string; fetchedAt: string; season: number; left: NhlXgTeam; right: NhlXgTeam; note: string; attribution: string }
-interface Market { gameStatus?: 'live' | 'upcoming' | 'final'; gameStartAt?: string; ticker: string; event: string; title: string; side: 'YES' | 'NO'; askCents: number; yesBid: string | null; yesAsk: string | null; noAsk: string | null; last: string | null; volume24h: string | null }
+interface Market { eventTicker?: string; gameStatus?: 'live' | 'upcoming' | 'final'; gameStartAt?: string; ticker: string; event: string; title: string; side: 'YES' | 'NO'; askCents: number; yesBid: string | null; yesAsk: string | null; noAsk: string | null; last: string | null; volume24h: string | null }
 interface ScanResult { source: string; scannedAt: string; markets: Market[]; partialCoverage: boolean; note: string; pagesScanned: number; sportsEvents: number; scheduledGames?: number }
 interface Comparison { source: string; fetchedAt: string; sample: number; left: Stats; right: Stats; partial: boolean; note: string; h2h?: { games: number; leftWins: number; rightWins: number; ties: number; meetings: { date: string; leftScore: number; rightScore: number }[] }; metricProfile?: { unit: string; available: string[]; unavailable: string[] } }
+const kalshiSeriesSlugs: Readonly<Record<string, string>> = {
+  kxnbagame: 'nba-game',
+  kxnflgame: 'nfl-game',
+  kxnhlgame: 'nhl-game',
+  kxmlbgame: 'professional-baseball-game',
+  kxwnbagame: 'womens-pro-basketball-game',
+  kxncaafgame: 'college-football-game',
+  kxncaambgame: 'mens-college-basketball-game'
+};
+
 @Component({
   selector: 'osi-root', standalone: true, imports: [CommonModule],
   template: `
@@ -83,8 +93,27 @@ interface Comparison { source: string; fetchedAt: string; sample: number; left: 
       <p *ngIf="provider() === 'novig'" class="hint">Novig integration is not configured yet.</p>
       <button class="run" [disabled]="scanLoading() || provider() === 'novig' || !validPriceRange()" (click)="scan()">{{ scanLoading() ? 'Scanning…' : 'Scan now →' }}</button>
       <p *ngIf="scanError()" class="error">{{ scanError() }}</p>
-      <ng-container *ngIf="scanResult() as result"><p class="meta">{{ result.source }} · {{ result.scannedAt | date:'medium' }} · {{ result.markets.length }} matching contracts · {{ result.sportsEvents }} matched games<span *ngIf="result.scheduledGames !== undefined"> of {{ result.scheduledGames }} on the ESPN schedule</span></p><p *ngIf="result.markets.length === 0" class="error">No matching contracts in the scanned portion. {{ result.partialCoverage ? 'Coverage is incomplete; this is NOT a full-book no-match result.' : 'Try widening the price range.' }}</p><p class="hint">{{ result.note }} <strong *ngIf="result.partialCoverage">Coverage is incomplete.</strong></p>
-        <a *ngFor="let m of result.markets" class="stats market-result" [href]="marketUrl(m)" target="_blank" rel="noopener noreferrer" [attr.aria-label]="'Open Kalshi market ' + m.title"><div class="market-result-heading"><strong><span *ngIf="m.gameStatus === 'live'" class="live-indicator" aria-label="Live game">LIVE</span>{{ m.event }} ↗</strong><span class="market-percentage" [attr.aria-label]="m.side + ' ask price ' + m.askCents + ' percent'">{{ m.askCents }}%</span></div><p *ngIf="m.gameStartAt">{{ m.gameStartAt | date:'short' }}</p><p>{{ m.title }} · {{ m.ticker }} · {{ m.side }} ask {{ m.askCents }}¢</p><p>YES bid {{ m.yesBid ?? '—' }} · YES ask {{ m.yesAsk ?? '—' }} · NO ask {{ m.noAsk ?? '—' }} · Last {{ m.last ?? '—' }} · 24h volume {{ m.volume24h ?? '—' }}</p></a>
+      <ng-container *ngIf="scanResult() as result">
+        <p *ngIf="result.scheduledGames === 0; else scanDetails" class="hint" role="status">
+          ESPN lists no live games or games starting in the next 12 hours for this league. Kalshi was skipped.
+        </p>
+        <ng-template #scanDetails>
+          <p class="meta">{{ result.source }} · {{ result.scannedAt | date:'medium' }} · {{ result.markets.length }} matching offers · {{ result.sportsEvents }} matched games<span *ngIf="result.scheduledGames !== undefined"> of {{ result.scheduledGames }} on the ESPN schedule</span></p><p *ngIf="result.markets.length === 0" class="error">No matching contracts in the scanned portion. {{ result.partialCoverage ? 'Coverage is incomplete; this is NOT a full-book no-match result.' : 'Try widening the price range.' }}</p><p class="hint">{{ result.note }} <strong *ngIf="result.partialCoverage">Coverage is incomplete.</strong></p>
+          <article *ngFor="let group of marketGroups()" class="stats market-result">
+            <div class="market-result-heading">
+              <strong><span *ngIf="group.lead.gameStatus === 'live'" class="live-indicator" aria-label="Live game">LIVE</span>{{ group.lead.event }}</strong>
+              <span class="market-percentage" [attr.aria-label]="'Ask price ' + group.askCents + ' cents'">{{ group.askCents }}¢</span>
+            </div>
+            <p *ngIf="group.lead.gameStartAt">{{ group.lead.gameStartAt | date:'short' }}</p>
+            <div class="market-offers">
+              <a *ngFor="let offer of group.offers" class="market-offer" [href]="marketUrl(offer)" target="_blank" rel="noopener noreferrer">
+                <strong>{{ offer.side }}</strong> · {{ offer.title }} ↗
+                <span class="meta">{{ offer.ticker }}</span>
+                <span class="meta">YES bid {{ offer.yesBid ?? '—' }} · YES ask {{ offer.yesAsk ?? '—' }} · NO ask {{ offer.noAsk ?? '—' }} · Last {{ offer.last ?? '—' }} · 24h volume {{ offer.volume24h ?? '—' }}</span>
+              </a>
+            </div>
+          </article>
+        </ng-template>
       </ng-container>
     </section>
     <footer class="build-footer" aria-label="Application build version">Build {{ buildId }}</footer>
@@ -123,13 +152,28 @@ interface Comparison { source: string; fetchedAt: string; sample: number; left: 
     .dual-range input[type=range]:focus-visible{outline:2px solid #a2eee7;outline-offset:5px}
     .dual-range input[type=range]:first-of-type{z-index:2}
     .dual-range input[type=range]:last-of-type{z-index:3}
-    .market-result{display:block;text-decoration:none;color:inherit;margin-top:10px;border:1px solid #354359;transition:border-color .15s,background .15s}.market-result:hover,.market-result:focus-visible{border-color:#69d8d0;background:#20354a;outline-offset:2px}.market-result strong{color:#85e6dc}
+    .market-result{margin-top:10px;border:1px solid #354359}
+    .market-result strong{color:#85e6dc}
+    .market-offers{display:grid;gap:8px;margin-top:12px}
+    .market-offer{display:block;padding:10px 12px;background:#111d2d;border:1px solid #354359;border-radius:8px;color:inherit;text-decoration:none;overflow-wrap:anywhere}
+    .market-offer:hover,.market-offer:focus-visible{border-color:#69d8d0;background:#20354a;outline-offset:2px}
+    .market-offer .meta{display:block;margin-top:4px;color:#a9b7cc}
     .market-result-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.market-percentage{font-size:clamp(24px,3vw,34px);line-height:1;font-weight:800;font-variant-numeric:tabular-nums;color:#85e6dc;white-space:nowrap}
     .stats p{font-size:14px;border-bottom:1px solid #29394e;padding-bottom:6px}@media(max-width:650px){.columns{grid-template-columns:1fr}}
   `]
 })
 export class AppComponent {
-  marketUrl(m: Market): string { return 'https://kalshi.com/markets/' + encodeURIComponent(m.ticker.toLowerCase()); }
+  marketUrl(offer: Market): string {
+    // Older snapshots may omit the event ticker. Game-winner markets append a team suffix.
+    const eventTicker = (offer.eventTicker ?? offer.ticker.replace(/-[^-]+$/, '')).toLowerCase();
+    const series = eventTicker.split('-')[0];
+    const matchupSlug = offer.event.toLowerCase().replace(/['’]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const slug = kalshiSeriesSlugs[series] ?? (matchupSlug || series);
+    const path = [series, slug, eventTicker].map(encodeURIComponent).join('/');
+    const url = new URL('https://kalshi.com/markets/' + path);
+    url.searchParams.set('op_market_ticker', offer.ticker);
+    return url.href;
+  }
   readonly tab = signal<'research' | 'markets'>('research');
   readonly provider = signal<'kalshi' | 'novig'>('kalshi');
   readonly minPrice = signal(50); readonly maxPrice = signal(72);
@@ -138,6 +182,20 @@ export class AppComponent {
   private invalidateScan(): void { this.scanId++; this.scanLoading.set(false); this.scanError.set(''); this.scanResult.set(null); }
   validPriceRange(): boolean { const a = this.minPrice(), b = this.maxPrice(); return Number.isInteger(a) && Number.isInteger(b) && a >= 1 && b <= 99 && a <= b; }
   readonly scanLoading = signal(false); readonly scanError = signal(''); readonly scanResult = signal<ScanResult | null>(null);
+  readonly marketGroups = computed(() => {
+    const groups = new Map<string, { lead: Market; askCents: number; offers: Market[] }>();
+    for (const offer of this.scanResult()?.markets ?? []) {
+      const game = offer.eventTicker ?? (offer.gameStartAt ? JSON.stringify([offer.event, offer.gameStartAt]) : offer.ticker);
+      const rawAsk = offer.side === 'YES' ? offer.yesAsk : offer.noAsk;
+      const exactCents = rawAsk ? Number(rawAsk) * 100 : NaN;
+      const askCents = Number.isFinite(exactCents) ? Number(exactCents.toFixed(4)) : offer.askCents;
+      const key = game + ':' + askCents;
+      const existing = groups.get(key);
+      if (existing) existing.offers.push(offer);
+      else groups.set(key, { lead: offer, askCents, offers: [offer] });
+    }
+    return [...groups.values()];
+  });
   private scanId = 0;
   chooseTab(value: 'research' | 'markets'): void { this.tab.set(value); this.scanId++; this.scanLoading.set(false); this.scanError.set(''); this.scanResult.set(null); }
   chooseProvider(value: 'kalshi' | 'novig'): void { this.provider.set(value); this.scanId++; this.scanLoading.set(false); this.scanError.set(''); this.scanResult.set(null); }

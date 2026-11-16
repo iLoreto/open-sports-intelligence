@@ -366,8 +366,9 @@ export default {
           const explicitMl = /(?:^|[-_])ml(?:$|[-_])/i.test(ticker);
           return (gameContext && isPlainTeamSide(titleText)) || explicitMl;
         };
-        const addMarket = (market: Quote, event: string, game: ScoreGame, mode: 'strict' | 'fallback' = 'strict') => {
+        const addMarket = (market: Quote, kalshiEvent: Event, game: ScoreGame, mode: 'strict' | 'fallback' = 'strict') => {
           if (!market.ticker || (market.status && !['open', 'active'].includes(market.status))) return;
+          const event = kalshiEvent.title || kalshiEvent.event_ticker!;
           const title = market.title || market.ticker;
           if (mode === 'strict' ? !isMoneylineMarket(event, title, market.ticker) : !isLeagueOutcomeContract(event, title, market.ticker)) return;
           if (seen.has(market.ticker)) return;
@@ -377,7 +378,7 @@ export default {
             if (typeof ask !== 'string' || !/^\d+(?:\.\d+)?$/.test(ask)) continue;
             quotedMarkets++;
             const cents = Math.round(Number(ask) * 100);
-            markets.push({ ticker: market.ticker, event, gameStartAt: game.date,
+            markets.push({ ticker: market.ticker, event, eventTicker: kalshiEvent.event_ticker, gameStartAt: game.date,
               gameStatus: game.status?.type?.state === 'in' ? 'live' : 'upcoming',
               title, side, askCents: cents,
               yesBid: market.yes_bid_dollars ?? null, yesAsk: market.yes_ask_dollars ?? null,
@@ -387,7 +388,7 @@ export default {
         };
         for (const mode of ['strict', 'fallback'] as const) {
           for (const { event, game } of sports) {
-            for (const market of event.markets ?? []) addMarket(market, event.title || event.event_ticker!, game, mode);
+            for (const market of event.markets ?? []) addMarket(market, event, game, mode);
           }
         }
         scanSignal.throwIfAborted();

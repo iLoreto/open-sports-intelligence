@@ -112,6 +112,7 @@ test('scanner checks ESPN first and fetches quotes only for the exact matched ev
   const body = await response.json() as any;
   assert.equal(body.scheduledGames, 1);
   assert.equal(body.sportsEvents, 1);
+  assert.equal(body.markets[0]?.eventTicker, eventTicker);
   assert.equal(body.partialCoverage, false);
   assert.deepEqual(body.markets.map((m: any) => [m.ticker, m.side, m.askCents, m.gameStatus, m.gameStartAt]),
     [[market.ticker, 'YES', 58, 'live', game.date]]);
