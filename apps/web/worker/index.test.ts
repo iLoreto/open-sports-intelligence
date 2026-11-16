@@ -278,3 +278,51 @@ test('scanner matches abbreviated Kalshi college team names to ESPN schools', as
   assert.equal(body.partialCoverage, false);
   assert.equal(body.markets.length, 1);
 });
+
+test('women’s college volleyball uses ESPN and the Kalshi match series', async t => {
+  const fixture = scoreboardGame('pre');
+  const game = { ...fixture, competitions: [{ competitors: ['Cincinnati Bearcats', 'Iowa State Cyclones'].map(displayName => ({
+    team: { displayName }
+  })) }] };
+  const ticker = 'KXNCAAWVMATCH-CINISU';
+  const event = { event_ticker: ticker, title: 'Cincinnati vs Iowa State' };
+  t.mock.method(globalThis, 'fetch', async (input: RequestInfo | URL) => {
+    const url = new URL(String(input));
+    if (url.hostname === 'site.api.espn.com') {
+      assert.match(url.pathname, /volleyball\/womens-college-volleyball\/scoreboard$/);
+      return Response.json({ events: [game] });
+    }
+    if (url.searchParams.has('series_ticker')) {
+      assert.equal(url.searchParams.get('series_ticker'), 'KXNCAAWVMATCH');
+      return Response.json({ events: [event], milestones: [{ start_date: game.date, primary_event_tickers: [ticker] }] });
+    }
+    assert.equal(url.searchParams.get('tickers'), ticker);
+    return Response.json({ events: [{ ...event, markets: [
+      { ...market, ticker: ticker + '-ISU', title: 'Iowa State wins' }
+    ] }] });
+  });
+  const response = await worker.fetch(request('/api/markets/scan?league=ncaav&min=50&max=72', 'POST'), { ASSETS: assets });
+  assert.equal(response.status, 200);
+  const body = await response.json() as any;
+  assert.equal(body.partialCoverage, false);
+  assert.deepEqual(body.markets.map((item: { ticker: string }) => item.ticker), [ticker + '-ISU']);
+});
+
+test('volleyball research reads completed team schedules and reports sets', async t => {
+  const game = { id: 'volley-1', date: new Date(Date.now() - 86400000).toISOString(),
+    competitions: [{ status: { type: { completed: true } }, competitors: [
+      { homeAway: 'home', team: { id: '221' }, score: { value: 3 } },
+      { homeAway: 'away', team: { id: '97' }, score: { displayValue: '1' } }
+    ] }] };
+  t.mock.method(globalThis, 'fetch', async (input: RequestInfo | URL) => {
+    assert.match(new URL(String(input)).pathname, /volleyball\/womens-college-volleyball\/teams\/(221|97)\/schedule$/);
+    return Response.json({ events: [game] });
+  });
+  const response = await worker.fetch(request('/api/leagues/ncaav/compare?left=221&right=97&sample=5'), { ASSETS: assets });
+  assert.equal(response.status, 200);
+  const body = await response.json() as any;
+  assert.equal(body.metricProfile.unit, 'sets');
+  assert.equal(body.left.pointsFor, 3);
+  assert.equal(body.right.pointsFor, 1);
+  assert.equal(body.h2h.games, 1);
+});

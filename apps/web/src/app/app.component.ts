@@ -1,8 +1,9 @@
 import { CommonModule } from '@angular/common';
-import { Component, signal } from '@angular/core';
+import { Component, computed, signal } from '@angular/core';
 import { BUILD_ID } from './build-info';
-type Sport = 'nba' | 'nfl' | 'nhl' | 'mlb' | 'wnba' | 'ncaaf' | 'ncaam' | 'tennis';
-type ScanLeague = Exclude<Sport, 'tennis'>;
+type ScanLeague = 'nba' | 'nfl' | 'nhl' | 'mlb' | 'wnba' | 'ncaaf' | 'ncaam' | 'ncaav';
+type Sport = ScanLeague | 'tennis-men' | 'tennis-women';
+interface LeagueOption { id: Sport; label: string; women?: boolean }
 interface Team { id: number | string; full_name: string; abbreviation?: string }
 interface Stats { games: number; wins: number; losses: number; ties?: number; pointsFor: number | null; pointsAgainst: number | null; recent: { date: string; scored: number; allowed: number; win: boolean }[] }
 interface NhlXgTeam { abbreviation: string; games: number; xgShare: number; xgf60: number; xga60: number; xgd60: number; highDangerFor: number; highDangerAgainst: number }
@@ -14,12 +15,21 @@ interface Comparison { source: string; fetchedAt: string; sample: number; left: 
   selector: 'osi-root', standalone: true, imports: [CommonModule],
   template: `
   <main class="workbench">
-    <header><div class="eyebrow">OPEN SPORTS INTELLIGENCE</div><h1>Sports Research Workbench</h1><p>Manual, sport-specific research. No automated scanning.</p></header>
+    <header><div class="eyebrow">OPEN SPORTS INTELLIGENCE</div><h1>Sports Research Workbench</h1></header>
     <nav class="sports" aria-label="Workspaces"><button [class.selected]="tab() === 'research'" (click)="chooseTab('research')">Research</button><button [class.selected]="tab() === 'markets'" (click)="chooseTab('markets')">Market Scanner</button><a class="methodology-nav" href="/how-we-read-the-game.html" aria-label="Read Radar Methodology and discipline rules">Radar Methodology</a><button type="button" class="methodology-nav" (click)="openLiveMonitor()" aria-label="Open password-protected Live Monitor">📊 Live Monitor</button></nav>
-    <nav class="sports" aria-label="Sports"><button *ngFor="let league of availableLeagues" [class.selected]="sport() === league.id" (click)="chooseSport(league.id)"><svg *ngIf="league.id === 'tennis'" aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" style="vertical-align:-3px;margin-right:5px"><circle cx="12" cy="12" r="10" fill="#c6e948" stroke="#75962b" stroke-width="1"/><path d="M5.2 4.6C11 8 11 16 5.2 19.4M18.8 4.6C13 8 13 16 18.8 19.4" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>{{ league.label }}</button></nav>
+    <nav class="league-nav" aria-label="Sports">
+      <div class="league-row" *ngFor="let group of leagueGroups" role="group" [attr.aria-label]="group.label">
+        <span class="league-heading" aria-hidden="true">{{ group.label }}</span>
+        <div class="league-buttons">
+          <button *ngFor="let league of group.leagues" type="button"
+            [class.women]="league.women" [class.selected]="sport() === league.id"
+            [attr.aria-pressed]="sport() === league.id" (click)="chooseSport(league.id)">{{ league.label }}</button>
+        </div>
+      </div>
+    </nav>
     <ng-container *ngIf="tab() === 'research'">
-    <section class="panel" *ngIf="sport() !== 'tennis'">
-      <div class="eyebrow">{{ sport().toUpperCase() }} / TEAM COMPARISON</div><h2>Team vs team</h2>
+    <section class="panel" *ngIf="!isTennis()">
+      <div class="eyebrow">{{ sport() === 'ncaav' ? 'COLLEGE VOLLEYBALL' : sport().toUpperCase() }} / TEAM COMPARISON</div><h2>Team vs team</h2>
       <p>Select two teams and a historical sample. The comparison calculates completed-game win/loss and scoring averages.</p>
       <div class="columns">
         <label>Team A<select [value]="left()" (change)="left.set($any($event.target).value)"><option [value]="0">Select team</option><option *ngFor="let team of teams()" [value]="team.id">{{ team.full_name }}</option></select></label>
@@ -29,8 +39,11 @@ interface Comparison { source: string; fetchedAt: string; sample: number; left: 
       <button class="run" [disabled]="loading() || !left() || !right() || left() === right()" (click)="run()">{{ loading() ? 'Loading…' : 'Run comparison →' }}</button>
       <p *ngIf="teamLoading()" class="hint">Loading {{ sport().toUpperCase() }} teams…</p><p class="hint">Historical results from ESPN; NHL also includes season-to-date five-on-five xG from MoneyPuck. Injury, goalie, and market information are not included.</p>
     </section>
-    <section class="panel" *ngIf="sport() === 'tennis'"><div class="eyebrow">TENNIS / ATP · WTA · CHALLENGER</div><h2>Tennis research</h2><p>The tennis provider is not yet configured. Player comparison controls will be enabled after verifying tournament coverage and historical statistics.</p></section>
-    <section class="panel" *ngIf="sport() !== 'tennis'" aria-live="polite"><h2>Results</h2>
+    <section class="panel" *ngIf="isTennis()">
+      <h2>{{ tennisLabel() }} research</h2>
+      <p>Player comparison data is unavailable for this tour.</p>
+    </section>
+    <section class="panel" *ngIf="!isTennis()" aria-live="polite"><h2>Results</h2>
       <p *ngIf="error()" class="error">{{ error() }}</p><p *ngIf="loading()">Retrieving provider data…</p>
       <p *ngIf="!loading() && !comparison() && !error()" class="hint">Choose two teams and run a comparison.</p>
       <ng-container *ngIf="comparison() as c"><p class="meta">{{ c.source }} · {{ c.fetchedAt | date:'medium' }} · Last {{ c.sample }} games requested</p>
@@ -50,7 +63,10 @@ interface Comparison { source: string; fetchedAt: string; sample: number; left: 
         <div class="stats" *ngIf="c.h2h as h"><h3>Direct head-to-head</h3><p>{{ h.games }} verified meetings in retrieved history · {{ teamName(left()) }}: {{ h.leftWins }} wins · {{ teamName(right()) }}: {{ h.rightWins }} wins · {{ h.ties }} ties</p><p *ngFor="let g of h.meetings">{{ g.date | date:'shortDate' }} · {{ g.leftScore }}–{{ g.rightScore }}</p><p *ngIf="!h.games">No direct meetings found in the retrieved window.</p></div><p class="hint" *ngIf="c.metricProfile">Advanced {{ sport().toUpperCase() }} metrics not yet available: {{ c.metricProfile.unavailable.join(', ') }}.</p><p class="hint">{{ c.note }} <strong *ngIf="c.partial">Provider pagination indicates incomplete coverage.</strong></p>
       </ng-container>
     </section></ng-container>
-    <section class="panel" *ngIf="tab() === 'markets'"><div class="eyebrow">MANUAL MARKET RESEARCH</div><h2>Market Scanner</h2><p>Select a provider and ask range, then press Scan to retrieve a new market snapshot for the selected league. No scheduled scans or automatic refresh.</p>
+    <section class="panel" *ngIf="tab() === 'markets' && isTennis()">
+      <h2>Market Scanner</h2><p>Game-winner scans are unavailable for {{ tennisLabel() }}.</p>
+    </section>
+    <section class="panel" *ngIf="tab() === 'markets' && !isTennis()"><div class="eyebrow">MANUAL MARKET RESEARCH</div><h2>Market Scanner</h2><p>Select a provider and ask range, then press Scan to retrieve a new market snapshot for the selected league. No scheduled scans or automatic refresh.</p>
       <div class="sports"><button [class.selected]="provider() === 'kalshi'" (click)="chooseProvider('kalshi')">Kalshi</button><button [class.selected]="provider() === 'novig'" (click)="chooseProvider('novig')">Novig</button></div>
       <div class="range-header"><strong>Ask price range</strong><strong>{{ minPrice() }}¢ – {{ maxPrice() }}¢</strong></div>
       <div class="range-control" role="group" aria-label="Contract price range">
@@ -81,6 +97,14 @@ interface Comparison { source: string; fetchedAt: string; sample: number; left: 
     .workbench{max-width:960px;margin:auto;padding:40px 20px 80px}header{margin-bottom:28px}h1{font-size:clamp(2rem,5vw,3.4rem);letter-spacing:-.04em;margin:10px 0}h2{margin:0 0 20px}h3{margin:0}
     p{color:#a9b7cc;line-height:1.55}.eyebrow{font-size:12px;font-weight:800;letter-spacing:.17em;color:#73d8d0}.sports{display:flex;gap:12px;margin-bottom:22px;flex-wrap:wrap}.sports button{min-width:100px}.sports button{flex:1}
     button,select,input{font:inherit;border:1px solid #354359;border-radius:10px;padding:12px 14px;background:#18263a;color:#f5f8fd}input{width:100%;box-sizing:border-box;margin-top:8px}button{cursor:pointer}button.selected{border-color:#69d8d0;background:#123b45}button:disabled{opacity:.55;cursor:default}
+    .league-nav{display:grid;gap:9px;margin-bottom:22px}
+    .league-row{display:grid;grid-template-columns:52px minmax(0,1fr);gap:10px;align-items:center}
+    .league-heading{color:#a9b7cc;font-size:13px;font-weight:700}
+    .league-buttons{display:flex;gap:7px;flex-wrap:wrap}
+    .league-buttons button{--league-accent:#a8d5ff;--league-border:#3b6895;--league-fill:#203f66;min-height:44px;padding:8px 10px;color:var(--league-accent);border-color:var(--league-border);font-size:13px;white-space:nowrap}
+    .league-buttons button.women{--league-accent:#f4bde8;--league-border:#8b527d;--league-fill:#542d50}
+    .league-buttons button.selected{background:var(--league-fill);border-color:var(--league-accent);box-shadow:inset 0 0 0 1px var(--league-accent)}
+    .league-buttons button:focus-visible{outline:2px solid var(--league-accent);outline-offset:2px}
     .panel{background:#111d2d;border:1px solid #29394e;border-radius:16px;padding:24px;margin-bottom:18px}label{display:block;margin:16px 0 7px;font-size:13px;color:#c3d0df}select{display:block;width:100%;box-sizing:border-box;margin-top:8px}
     .columns{display:grid;grid-template-columns:1fr 1fr;gap:18px}.run{width:100%;background:#69d8d0;color:#08242c;border:0;font-weight:800;margin-top:22px}.hint,.meta{font-size:13px}.error{color:#ffaaa6}.stats{padding:15px;background:#172538;border-radius:10px}
     .range-header{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-top:22px}
@@ -118,10 +142,11 @@ export class AppComponent {
   chooseTab(value: 'research' | 'markets'): void { this.tab.set(value); this.scanId++; this.scanLoading.set(false); this.scanError.set(''); this.scanResult.set(null); }
   chooseProvider(value: 'kalshi' | 'novig'): void { this.provider.set(value); this.scanId++; this.scanLoading.set(false); this.scanError.set(''); this.scanResult.set(null); }
   async scan(): Promise<void> {
-    if (this.provider() !== 'kalshi' || this.scanLoading() || !this.validPriceRange()) return;
+    const league = this.scanLeague();
+    if (!league || this.provider() !== 'kalshi' || this.scanLoading() || !this.validPriceRange()) return;
     const id = ++this.scanId; this.scanLoading.set(true); this.scanError.set(''); this.scanResult.set(null);
     try {
-      const response = await fetch('/api/markets/scan?provider=kalshi&league=' + encodeURIComponent(this.scanLeague()) + '&min=' + this.minPrice() + '&max=' + this.maxPrice(), { method: 'POST', cache: 'no-store' });
+      const response = await fetch('/api/markets/scan?provider=kalshi&league=' + encodeURIComponent(league) + '&min=' + this.minPrice() + '&max=' + this.maxPrice(), { method: 'POST', cache: 'no-store' });
       const body = await response.json() as ScanResult & { error?: string };
       if (!response.ok) throw new Error(body.error || 'Market scan unavailable');
       if (id === this.scanId && this.tab() === 'markets' && this.provider() === 'kalshi') this.scanResult.set(body);
@@ -135,9 +160,24 @@ export class AppComponent {
     window.location.assign('/live-monitor.html');
   }
   readonly buildId = BUILD_ID;
-  readonly availableLeagues: { id: Sport; label: string }[] = [{id:'nba',label:'🏀 NBA'},{id:'nfl',label:'🏈 NFL'},{id:'nhl',label:'🏒 NHL'},{id:'mlb',label:'⚾ MLB'},{id:'wnba',label:'🏀 WNBA'},{id:'ncaaf',label:'🏈 NCAA Football'},{id:'ncaam',label:'🏀 NCAA Basketball'},{id:'tennis',label:'Tennis'}];
+  readonly leagueGroups: { label: string; leagues: LeagueOption[] }[] = [
+    { label: 'Pro', leagues: [
+      { id: 'nba', label: '🏀 NBA' }, { id: 'nfl', label: '🏈 NFL' }, { id: 'nhl', label: '🏒 NHL' },
+      { id: 'mlb', label: '⚾ MLB' }, { id: 'wnba', label: '🏀 WNBA', women: true },
+      { id: 'tennis-men', label: '🎾 Men’s Tennis' }, { id: 'tennis-women', label: '🎾 Women’s Tennis', women: true }
+    ] },
+    { label: 'College', leagues: [
+      { id: 'ncaaf', label: '🏈 NCAA Football' }, { id: 'ncaam', label: '🏀 NCAA Basketball' },
+      { id: 'ncaav', label: '🏐 Women’s College Volleyball', women: true }
+    ] }
+  ];
   readonly sport = signal<Sport>('nba');
-  readonly scanLeague = signal<ScanLeague>('nba');
+  readonly scanLeague = computed<ScanLeague | null>(() => {
+    const sport = this.sport();
+    return sport === 'tennis-men' || sport === 'tennis-women' ? null : sport;
+  });
+  readonly isTennis = computed(() => this.scanLeague() === null);
+  readonly tennisLabel = computed(() => this.sport() === 'tennis-women' ? 'Women’s Tennis' : 'Men’s Tennis');
   readonly teamLoading = signal(false);
   readonly teams = signal<Team[]>([]);
   readonly left = signal<string | number>(0); readonly right = signal<string | number>(0); readonly sample = signal(10);
@@ -147,10 +187,23 @@ export class AppComponent {
   constructor() { void this.loadTeams(); }
   teamName(id: number | string): string { return this.teams().find(t => String(t.id) === String(id))?.full_name ?? 'Team'; }
   chooseSport(value: Sport): void {
-    this.requestId++; this.sport.set(value); this.teams.set([]); this.left.set(0); this.right.set(0); this.loading.set(false); this.comparison.set(null); this.nhlXg.set(null); this.nhlXgError.set(''); this.error.set(''); if (value !== 'tennis') { this.scanLeague.set(value); void this.loadTeams(); }
+    if (this.sport() === value) return;
+    this.requestId++;
+    this.invalidateScan();
+    this.sport.set(value);
+    this.teams.set([]);
+    this.left.set(0);
+    this.right.set(0);
+    this.loading.set(false);
+    this.teamLoading.set(false);
+    this.comparison.set(null);
+    this.nhlXg.set(null);
+    this.nhlXgError.set('');
+    this.error.set('');
+    if (!this.isTennis()) void this.loadTeams();
   }
   async loadTeams(): Promise<void> {
-    const selected = this.sport(); if (selected === 'tennis') return; const requestId = this.requestId; this.teamLoading.set(true);
+    const selected = this.scanLeague(); if (!selected) return; const requestId = this.requestId; this.teamLoading.set(true);
     try {
       const response = await fetch(selected === 'nba' ? '/api/nba/teams' : '/api/leagues/' + selected + '/teams', { cache: 'no-store' });
       const body = await response.json() as { teams?: Team[]; message?: string };
@@ -160,7 +213,7 @@ export class AppComponent {
     finally { if (requestId === this.requestId) this.teamLoading.set(false); }
   }
   async run(): Promise<void> {
-    if (this.sport() === 'tennis' || !this.left() || !this.right() || String(this.left()) === String(this.right())) return;
+    if (this.isTennis() || !this.left() || !this.right() || String(this.left()) === String(this.right())) return;
     const id = ++this.requestId, a = this.left(), b = this.right(), n = this.sample();
     this.loading.set(true); this.error.set(''); this.comparison.set(null); this.nhlXg.set(null); this.nhlXgError.set('');
     try {
