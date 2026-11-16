@@ -34,17 +34,7 @@ The Worker must run for `/api/*` routes. Angular's standalone development server
 
 Connect the GitHub repository `iLoreto/open-sports-intelligence` to Cloudflare Workers, using branch `main`, root directory `apps/web`, build command `npm run build`, and deploy command `npx wrangler deploy`. The tracked `apps/web/wrangler.jsonc` declares the Worker entrypoint and static assets. It does **not** configure a cron trigger or D1 history binding.
 
-### Shared scan cache
-
-The first manual scan after a cache miss fetches a league snapshot. The Worker stores the quotes before filtering by ask price, so subsequent users scanning the same league can use any range without calling Kalshi again. Complete snapshots expire after ten minutes. Incomplete snapshots expire after one minute. The response includes the scan timestamp and cache age.
-
-To enable the shared cache in Cloudflare, provision a D1 database and configure it under `d1_databases` in `apps/web/wrangler.jsonc` with binding `DB` and its database name and ID. From `apps/web`, initialize the cache table before deploying the binding.
-
-```bash
-npx wrangler d1 execute DB --remote --file migrations/0001_scan_cache.sql
-```
-
-Verify that two manual scans for the same league with different price ranges return `cache.status: "miss"` and then `"hit"`, with the same `scannedAt`. Without the binding, the Worker reports `cache.status: "unavailable"`.
+The Worker uses the existing `open-sports-radar` D1 database to share manual league scans across users and price ranges. See the [scan cache deployment guide](docs/shared-scan-cache.md) for initialization and verification.
 
 ### Market scanner API
 

@@ -1,19 +1,20 @@
 # Shared scan cache (Cloudflare D1)
 
-The Worker caches a provider-wide Kalshi sports snapshot for **60 seconds** and filters the returned quotes per request. Different users and price ranges reuse the same snapshot. An atomic D1 upsert lease prevents simultaneous Workers from performing duplicate upstream scans.
+The first manual scan after a cache miss fetches a league snapshot. The Worker stores quotes before filtering by ask price, so users scanning the same league can use any range without calling Kalshi again while the snapshot is fresh. An atomic D1 lease prevents concurrent refreshes for that league.
 
-## Provisioning (required for shared caching)
-1. Create a Cloudflare D1 database in the dashboard, e.g. `sports-radar-cache`.
-2. Apply `apps/web/migrations/0001_scan_cache.sql` to that database (Cloudflare D1 console or Wrangler migration execution).
-3. Add a D1 binding named **DB** to the `open-sports-intelligence` Worker in Cloudflare settings, in each deployment environment.
-4. For Wrangler-managed deployments, add the actual database UUID to `apps/web/wrangler.jsonc` under `d1_databases` with `binding: "DB"`, `database_name` and `database_id`. Never guess the UUID.
-5. Verify the Worker is using the binding and migration before enabling production caching.
+## Cloudflare setup
 
-If DB is not bound, the existing scan remains available but the response explicitly reports `cache.status = "unavailable"`. The D1 cache is not activated merely by merging the PR.
+The Worker binds the existing `open-sports-radar` database as `DB` in `apps/web/wrangler.jsonc`. Before deploying, initialize the `scan_cache` table using the idempotent migration. Run this from `apps/web`.
+
+```bash
+npx wrangler d1 execute DB --remote --file migrations/0001_scan_cache.sql
+```
+
+To verify an expired or empty cache, run two manual scans for the same league with different price ranges. The first should report `cache.status: "miss"`. The second should report `"hit"`, with the same `scannedAt`. Without the binding, the Worker reports `cache.status: "unavailable"`.
 
 ## Semantics
-- Cache key: `kalshi:sports:open:v1`. Provider, sport and query scope must change the key if scan coverage changes.
-- TTL: 60 seconds from successful write. The original `scannedAt` is preserved and returned to the client.
+- The cache uses one key per league, such as `kalshi:sports:open:v1:nba`.
+- Complete snapshots expire after ten minutes. Incomplete snapshots expire after one minute. The original `scannedAt` is returned with the cache age.
 - Lease: 120 seconds; R2 review fixes add an atomic freshness predicate to the lease claim and a 90-second scan-wide abort signal passed into every Kalshi fetch. Expired lease owners cannot commit snapshots. Waiting requests poll for a completed snapshot, then receive a retryable error rather than issuing duplicate scans.
 - A failed scan releases its lease. Stale data is not silently substituted.
 - Existing bounded pagination and partial coverage metadata are retained; a cached partial scan remains partial.
