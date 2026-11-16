@@ -33,16 +33,17 @@ function filter(snapshot: ScanSnapshot, min: number, max: number, status: ScanOu
   return { ...snapshot, min, max, markets: snapshot.markets.filter(m => m.askCents >= min && m.askCents <= max),
     cache: { status, ttlSeconds: 60, ageSeconds } };
 }
-async function read(db: ScanDatabase): Promise<Row | null> {
-  return db.prepare('SELECT snapshot, captured_at, expires_at, lease_until FROM scan_cache WHERE cache_key = ?').bind(SCAN_KEY).first<Row>();
+async function read(db: ScanDatabase, key = SCAN_KEY): Promise<Row | null> {
+  return db.prepare('SELECT snapshot, captured_at, expires_at, lease_until FROM scan_cache WHERE cache_key = ?').bind(key).first<Row>();
 }
 /** A single provider snapshot serves every price range; the SQL lease serializes concurrent Workers. */
 export async function sharedScan(db: ScanDatabase, min: number, max: number, fetchSnapshot: (signal: AbortSignal) => Promise<ScanSnapshot>,
-  options: { now?: () => number; wait?: (ms: number) => Promise<void>; token?: string; maxWaits?: number } = {}): Promise<ScanOutput> {
+  options: { now?: () => number; wait?: (ms: number) => Promise<void>; token?: string; maxWaits?: number; scope?: string } = {}): Promise<ScanOutput> {
+  const key = options.scope ? SCAN_KEY + ':' + options.scope : SCAN_KEY;
   const now = options.now ?? Date.now;
   const wait = options.wait ?? sleep;
   const token = options.token ?? crypto.randomUUID();
-  const initial = await read(db);
+  const initial = await read(db, key);
   if (initial?.snapshot && (initial.expires_at ?? 0) > now()) {
     return filter(JSON.parse(initial.snapshot) as ScanSnapshot, min, max, 'hit', now());
   }
@@ -52,7 +53,7 @@ export async function sharedScan(db: ScanDatabase, min: number, max: number, fet
     lease_token = excluded.lease_token, lease_until = excluded.lease_until
     WHERE (scan_cache.lease_until IS NULL OR scan_cache.lease_until <= ?)
       AND (scan_cache.expires_at IS NULL OR scan_cache.expires_at <= ?)`)
-    .bind(SCAN_KEY, token, leaseTime + LEASE_MS, leaseTime, leaseTime).run();
+    .bind(key, token, leaseTime + LEASE_MS, leaseTime, leaseTime).run();
   if (claim.meta.changes > 0) {
     try {
       const deadline = AbortSignal.timeout(SCAN_DEADLINE_MS);
@@ -61,12 +62,12 @@ export async function sharedScan(db: ScanDatabase, min: number, max: number, fet
       const finished = now();
       const write = await db.prepare(`UPDATE scan_cache SET snapshot = ?, captured_at = ?, expires_at = ?,
         lease_token = NULL, lease_until = NULL WHERE cache_key = ? AND lease_token = ? AND lease_until > ?`)
-        .bind(JSON.stringify(snapshot), finished, finished + SNAPSHOT_TTL_MS, SCAN_KEY, token, finished).run();
+        .bind(JSON.stringify(snapshot), finished, finished + SNAPSHOT_TTL_MS, key, token, finished).run();
       if (write.meta.changes !== 1) throw new Error('Scan lease expired before the snapshot could be saved');
       return filter(snapshot, min, max, 'miss', finished);
     } catch (error) {
       await db.prepare('UPDATE scan_cache SET lease_token = NULL, lease_until = NULL WHERE cache_key = ? AND lease_token = ?')
-        .bind(SCAN_KEY, token).run().catch(() => undefined);
+        .bind(key, token).run().catch(() => undefined);
       throw error;
     }
   }
