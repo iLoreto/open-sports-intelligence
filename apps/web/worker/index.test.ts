@@ -192,3 +192,75 @@ test('scanner excludes completed games and never requests their contract details
     assert.equal(detailCalls, 0);
   } finally { globalThis.fetch = originalFetch; }
 });
+
+test('scanner retries a short Kalshi rate limit once', async t => {
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', async (input: RequestInfo | URL) => {
+    const url = new URL(String(input));
+    if (url.hostname === 'site.api.espn.com') return Response.json({ events: [] });
+    assert.ok(url.pathname.endsWith('/series'));
+    calls++;
+    if (calls === 1) return new Response(null, { status: 429, headers: { 'Retry-After': '0' } });
+    return Response.json({ series: [] });
+  });
+
+  const response = await worker.fetch(request('/api/markets/scan?league=nba', 'POST'), { ASSETS: assets });
+  assert.equal(response.status, 200);
+  const body = await response.json() as { rateLimited: boolean; partialCoverage: boolean };
+  assert.equal(body.rateLimited, false);
+  assert.equal(body.partialCoverage, false);
+  assert.equal(calls, 2);
+});
+
+test('scanner surfaces sustained Kalshi throttling with Retry-After', async t => {
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', async () => {
+    calls++;
+    return new Response(null, { status: 429, headers: { 'Retry-After': calls === 1 ? '0' : '30' } });
+  });
+
+  const response = await worker.fetch(request('/api/markets/scan?league=nba', 'POST'), { ASSETS: assets });
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get('Retry-After'), '30');
+  assert.deepEqual(await response.json(), {
+    error: 'Kalshi is temporarily rate limiting scans. Please retry shortly.',
+    rateLimited: true
+  });
+  assert.equal(calls, 2);
+});
+
+test('scanner returns quotes already fetched when Kalshi throttles market pagination', async t => {
+  const game = scoreboardGame('in');
+  const eventTicker = 'KXNBAGAME-26NOV16';
+  const ticker = eventTicker + '-ML';
+  let marketCalls = 0;
+  t.mock.method(globalThis, 'fetch', async (input: RequestInfo | URL) => {
+    const url = new URL(String(input));
+    if (url.hostname === 'site.api.espn.com') return Response.json({ events: [game] });
+    if (url.pathname.endsWith('/series')) return Response.json({ series: [{ ticker: 'KXNBAGAME', category: 'Sports' }] });
+    if (url.pathname.endsWith('/events')) {
+      return Response.json({ events: [{ event_ticker: eventTicker, title: 'Boston at Philadelphia' }] });
+    }
+    assert.ok(url.pathname.endsWith('/markets'));
+    marketCalls++;
+    if (url.searchParams.has('cursor')) {
+      return new Response(null, { status: 429, headers: { 'Retry-After': '30' } });
+    }
+    return Response.json({
+      markets: [{ ticker, title: 'Yes Boston', status: 'open', yes_ask_dollars: '0.58', no_ask_dollars: '0.42' }],
+      cursor: 'next'
+    });
+  });
+
+  const response = await worker.fetch(request('/api/markets/scan?league=nba&min=50&max=72', 'POST'), { ASSETS: assets });
+  assert.equal(response.status, 200);
+  const body = await response.json() as {
+    rateLimited: boolean;
+    partialCoverage: boolean;
+    markets: { ticker: string; askCents: number }[];
+  };
+  assert.equal(body.rateLimited, true);
+  assert.equal(body.partialCoverage, true);
+  assert.deepEqual(body.markets.map(market => [market.ticker, market.askCents]), [[ticker, 58]]);
+  assert.equal(marketCalls, 2);
+});

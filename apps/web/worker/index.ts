@@ -6,6 +6,17 @@ type Team = { id: number; full_name: string };
 type Game = { id: number; date: string; status: string; home_team: Team; visitor_team: Team; home_team_score: number; visitor_team_score: number };
 const NBA_TEAMS: Team[] = [{"id":1,"full_name":"Atlanta Hawks"},{"id":2,"full_name":"Boston Celtics"},{"id":3,"full_name":"Brooklyn Nets"},{"id":4,"full_name":"Charlotte Hornets"},{"id":5,"full_name":"Chicago Bulls"},{"id":6,"full_name":"Cleveland Cavaliers"},{"id":7,"full_name":"Dallas Mavericks"},{"id":8,"full_name":"Denver Nuggets"},{"id":9,"full_name":"Detroit Pistons"},{"id":10,"full_name":"Golden State Warriors"},{"id":11,"full_name":"Houston Rockets"},{"id":12,"full_name":"Indiana Pacers"},{"id":13,"full_name":"LA Clippers"},{"id":14,"full_name":"Los Angeles Lakers"},{"id":15,"full_name":"Memphis Grizzlies"},{"id":16,"full_name":"Miami Heat"},{"id":17,"full_name":"Milwaukee Bucks"},{"id":18,"full_name":"Minnesota Timberwolves"},{"id":19,"full_name":"New Orleans Pelicans"},{"id":20,"full_name":"New York Knicks"},{"id":21,"full_name":"Oklahoma City Thunder"},{"id":22,"full_name":"Orlando Magic"},{"id":23,"full_name":"Philadelphia 76ers"},{"id":24,"full_name":"Phoenix Suns"},{"id":25,"full_name":"Portland Trail Blazers"},{"id":26,"full_name":"Sacramento Kings"},{"id":27,"full_name":"San Antonio Spurs"},{"id":28,"full_name":"Toronto Raptors"},{"id":29,"full_name":"Utah Jazz"},{"id":30,"full_name":"Washington Wizards"}];
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
+class KalshiRateLimitError extends Error {
+  retryAfterSeconds: number;
+
+  constructor(retryAfter: string | null) {
+    super('Kalshi is temporarily rate limiting scans. Please retry shortly.');
+    const seconds = retryAfter && /^\d+$/.test(retryAfter)
+      ? Number(retryAfter)
+      : Math.ceil((Date.parse(retryAfter ?? '') - Date.now()) / 1000);
+    this.retryAfterSeconds = Number.isFinite(seconds) ? Math.max(0, seconds) : 1;
+  }
+}
 function validDate(value: string): boolean { return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value)); }
 const NBA_ABBREVIATIONS = ['ATL','BOS','BKN','CHA','CHI','CLE','DAL','DEN','DET','GS','HOU','IND','LAC','LAL','MEM','MIA','MIL','MIN','NO','NY','OKC','ORL','PHI','PHX','POR','SAC','SA','TOR','UTAH','WSH'];
 async function espnComparison(left: number, right: number, sample: number) {
@@ -177,12 +188,27 @@ export default {
         let pagesScanned = 0; let sportsEvents = 0; let nestedMarkets = 0; let quotedMarkets = 0;
         let rateLimited = false; let incomplete = false;
         const sports: Event[] = [];
+        let retriedRateLimit = false;
         const fetchJson = async <T>(path: string): Promise<T> => {
-          const response = await fetch(endpoint + path, {
+          const fetchPage = () => fetch(endpoint + path, {
             headers: { Accept: 'application/json' },
             signal: AbortSignal.any([scanSignal, AbortSignal.timeout(13000)])
           });
-          if (response.status === 429) { rateLimited = true; throw new Error('Kalshi rate limit reached (429)'); }
+          let response = await fetchPage();
+          if (response.status === 429) {
+            const error = new KalshiRateLimitError(response.headers.get('Retry-After'));
+            await response.body?.cancel();
+            // Give transient throttling one retry within the manual scan's time budget.
+            if (retriedRateLimit || error.retryAfterSeconds > 2) throw error;
+            retriedRateLimit = true;
+            await new Promise<void>(resolve => setTimeout(resolve, error.retryAfterSeconds * 1000));
+            scanSignal.throwIfAborted();
+            response = await fetchPage();
+            if (response.status === 429) {
+              await response.body?.cancel();
+              throw new KalshiRateLimitError(response.headers.get('Retry-After'));
+            }
+          }
           if (!response.ok) throw new Error('Kalshi HTTP ' + response.status);
           return response.json() as Promise<T>;
         };
@@ -297,7 +323,13 @@ export default {
           const quotes: Quote[] = [];
           for (let pageNumber = 0; pageNumber < 3; pageNumber++) {
             if (cursor) query.set('cursor', cursor);
-            const page = await fetchJson<{ markets?: Quote[]; cursor?: string }>('/markets?' + query);
+            const page = await fetchJson<{ markets?: Quote[]; cursor?: string }>('/markets?' + query)
+              .catch(error => {
+                if (!(error instanceof KalshiRateLimitError) || nestedMarkets + quotes.length === 0) throw error;
+                rateLimited = true;
+                return null;
+              });
+            if (!page) break;
             if (!Array.isArray(page.markets)) throw new Error('Unexpected Kalshi market detail response');
             quotes.push(...page.markets);
             const next = page.cursor || '';
@@ -309,6 +341,7 @@ export default {
           sports.push({ ...event, markets: quotes });
           sportsEvents++;
           nestedMarkets += quotes.length;
+          if (rateLimited) break;
         }
         const results: (Quote & { event_ticker?: string })[][] = [];
         const marketPagesScanned = 0;
@@ -381,7 +414,8 @@ export default {
         for (const source of allSources) addMarket(source.market, source.event, source.status, 'fallback');
         scanSignal.throwIfAborted();
         markets.sort((a, b) => a.askCents - b.askCents || a.event.localeCompare(b.event));
-        const modeNote = markets.length ? 'Results include game moneyline and plain team-outcome contracts, deduplicated across both matching rules.' : 'No eligible game contracts found in the scanned portion of the feed.';
+        const modeNote = rateLimited ? 'Kalshi rate limited the scan. Only quotes fetched before the limit are included.' :
+          markets.length ? 'Results include game moneyline and plain team-outcome contracts, deduplicated across both matching rules.' : 'No eligible game contracts found in the scanned portion of the feed.';
         return { source: 'Kalshi public API', provider, scannedAt: new Date().toISOString(),
           sportsEvents, pagesScanned, nestedMarkets, quotedMarkets, fetchedMarkets: results.reduce((n, group) => n + group.length, 0), marketPagesScanned, rateLimited, markets, partialCoverage: Boolean(incomplete || rateLimited),
           note: 'Sports-only, on-demand scan. ' + modeNote + ' Quotes are displayed by contract side (YES/NO) at the current ask. Discovery uses league-specific series and event IDs; coverage limits are reported. Coverage is partial when additional pages exist or rate limiting occurs.' };
@@ -391,7 +425,14 @@ export default {
           : uncachedScan(await fetchSnapshot(request.signal), min, max);
         const leagueFiltered = result.markets.filter((market) => inferLeague(market.event, market.title, market.ticker) === selectedLeague);
         return json({ ...result, markets: leagueFiltered, note: result.note + ' League filter: ' + leagueLabel(selectedLeague) + '.' });
-      } catch (e) { return json({ error: e instanceof Error ? e.message : 'Kalshi feed unavailable' }, 502); }
+      } catch (e) {
+        if (e instanceof KalshiRateLimitError) {
+          const response = json({ error: e.message, rateLimited: true }, 503);
+          response.headers.set('Retry-After', String(e.retryAfterSeconds));
+          return response;
+        }
+        return json({ error: e instanceof Error ? e.message : 'Kalshi feed unavailable' }, 502);
+      }
     }
     const leagueCompare = new RegExp('^/api/leagues/(nfl|nhl|mlb|wnba|ncaaf|ncaam)/compare$').exec(url.pathname);
     if (leagueCompare) {
