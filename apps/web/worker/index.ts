@@ -171,55 +171,83 @@ export default {
         // On-demand only. A single D1 snapshot is shared across users and price ranges.
         const endpoint = 'https://external-api.kalshi.com/trade-api/v2';
         type Quote = { ticker?: string; title?: string; status?: string; yes_bid_dollars?: string; yes_ask_dollars?: string; no_ask_dollars?: string; last_price_dollars?: string; volume_24h_fp?: string };
-        type Event = { event_ticker?: string; title?: string; category?: string; markets?: Quote[] };
+        type Event = { event_ticker?: string; series_ticker?: string; title?: string; category?: string; markets?: Quote[] };
+        type Series = { ticker: string; title?: string; category?: string; tags?: string[] };
         const markets: ScanSnapshot['markets'] = [];
-        let cursor = ''; let pagesScanned = 0; let sportsEvents = 0; let nestedMarkets = 0; let quotedMarkets = 0;
-        let rateLimited = false;
+        let pagesScanned = 0; let sportsEvents = 0; let nestedMarkets = 0; let quotedMarkets = 0;
+        let rateLimited = false; let incomplete = false;
         const sports: Event[] = [];
-        // Collect sports events first. Event listings are not guaranteed to contain usable quote data.
-        for (let pageNumber = 0; pageNumber < 20; pageNumber++) {
-          const query = new URLSearchParams({ status: 'open', limit: '200', with_nested_markets: 'true' });
-          if (cursor) query.set('cursor', cursor);
-          const response = await fetch(endpoint + '/events?' + query.toString(), {
-            headers: { Accept: 'application/json' }, signal: AbortSignal.any([scanSignal, AbortSignal.timeout(13000)])
+        const fetchJson = async <T>(path: string): Promise<T> => {
+          const response = await fetch(endpoint + path, {
+            headers: { Accept: 'application/json' },
+            signal: AbortSignal.any([scanSignal, AbortSignal.timeout(13000)])
           });
-          if (response.status === 429) { rateLimited = true; break; }
-          if (!response.ok) throw new Error('Kalshi events HTTP ' + response.status);
-          const page = await response.json() as { events?: Event[]; cursor?: string };
-          if (!Array.isArray(page.events)) throw new Error('Unexpected Kalshi event response');
-          pagesScanned++;
-          for (const event of page.events) {
-            if (event.category?.trim().toLowerCase() !== 'sports' || !event.event_ticker) continue;
-            sportsEvents++;
-            sports.push(event);
-            nestedMarkets += event.markets?.length || 0;
+          if (response.status === 429) { rateLimited = true; throw new Error('Kalshi rate limit reached (429)'); }
+          if (!response.ok) throw new Error('Kalshi HTTP ' + response.status);
+          return response.json() as Promise<T>;
+        };
+        // Discover series IDs first. Never page through the global /markets firehose.
+        const catalog = await fetchJson<{ series?: Series[] }>('/series?category=Sports');
+        if (!Array.isArray(catalog.series)) throw new Error('Unexpected Kalshi series response');
+        const leaguePatterns: Record<ScanLeague, RegExp> = {
+          nba: /(?:^|\\W)nba(?:$|\\W)|kxnba|pro basketball/i,
+          nfl: /(?:^|\\W)nfl(?:$|\\W)|kxnfl|pro football/i,
+          nhl: /(?:^|\\W)nhl(?:$|\\W)|kxnhl|pro hockey/i,
+          mlb: /(?:^|\\W)mlb(?:$|\\W)|kxmlb|major league baseball/i,
+          wnba: /(?:^|\\W)wnba(?:$|\\W)|kxwnba/i,
+          ncaaf: /ncaaf|college football/i,
+          ncaam: /ncaam|college basketball|men.s college basketball/i
+        };
+        const selectedSeries = catalog.series.filter(series =>
+          series.category?.toLowerCase() === 'sports' &&
+          leaguePatterns[selectedLeague].test([series.ticker, series.title, ...(series.tags || [])].join(' ')));
+        const eventIds = new Map<string, Event>();
+        // Bound upstream work explicitly; incomplete scans must not masquerade as full coverage.
+        const MAX_SERIES = 80;
+        const MAX_EVENT_PAGES = 4;
+        if (selectedSeries.length > MAX_SERIES) incomplete = true;
+        for (const series of selectedSeries.slice(0, MAX_SERIES)) {
+          let cursor = '';
+          for (let pageNumber = 0; pageNumber < MAX_EVENT_PAGES; pageNumber++) {
+            const query = new URLSearchParams({ status: 'open', limit: '200', series_ticker: series.ticker });
+            if (cursor) query.set('cursor', cursor);
+            const page = await fetchJson<{ events?: Event[]; cursor?: string }>('/events?' + query);
+            if (!Array.isArray(page.events)) throw new Error('Unexpected Kalshi events response');
+            pagesScanned++;
+            for (const event of page.events) if (event.event_ticker) eventIds.set(event.event_ticker, event);
+            const next = page.cursor || '';
+            if (!next) { cursor = ''; break; }
+            if (next === cursor) throw new Error('Kalshi event pagination cursor repeated');
+            cursor = next;
+            if (pageNumber === MAX_EVENT_PAGES - 1) incomplete = true;
           }
-          const next = page.cursor || '';
-          if (!next || next === cursor) { cursor = ''; break; }
-          cursor = next;
         }
-        // Page through the global markets feed rather than issuing one request per
-        // event. This bounds upstream traffic and avoids rate-limit bursts.
-        const eventTitles = new Map(sports.map(e => [e.event_ticker!, e.title || e.event_ticker!]));
+        // Stage two: query details by discovered event ID, never by global market page.
+        const MAX_EVENTS = 300;
+        if (eventIds.size > MAX_EVENTS) incomplete = true;
+        for (const event of [...eventIds.values()].slice(0, MAX_EVENTS)) {
+          const query = new URLSearchParams({ status: 'open', event_ticker: event.event_ticker!, limit: '1000' });
+          let cursor = '';
+          const quotes: Quote[] = [];
+          for (let pageNumber = 0; pageNumber < 3; pageNumber++) {
+            if (cursor) query.set('cursor', cursor);
+            const page = await fetchJson<{ markets?: Quote[]; cursor?: string }>('/markets?' + query);
+            if (!Array.isArray(page.markets)) throw new Error('Unexpected Kalshi market detail response');
+            quotes.push(...page.markets);
+            const next = page.cursor || '';
+            if (!next) { cursor = ''; break; }
+            if (next === cursor) throw new Error('Kalshi market pagination cursor repeated');
+            cursor = next;
+            if (pageNumber === 2) incomplete = true;
+          }
+          sports.push({ ...event, markets: quotes });
+          sportsEvents++;
+          nestedMarkets += quotes.length;
+        }
         const results: (Quote & { event_ticker?: string })[][] = [];
-        let marketCursor = '';
-        let marketPagesScanned = 0;
-        for (let pageNumber = 0; pageNumber < 10; pageNumber++) {
-          const query = new URLSearchParams({ status: 'open', limit: '1000' });
-          if (marketCursor) query.set('cursor', marketCursor);
-          const response = await fetch(endpoint + '/markets?' + query.toString(), {
-            headers: { Accept: 'application/json' }, signal: AbortSignal.any([scanSignal, AbortSignal.timeout(13000)])
-          });
-          if (response.status === 429) { rateLimited = true; break; }
-          if (!response.ok) throw new Error('Kalshi markets HTTP ' + response.status);
-          const page = await response.json() as { markets?: (Quote & { event_ticker?: string })[]; cursor?: string };
-          if (!Array.isArray(page.markets)) throw new Error('Unexpected Kalshi markets response');
-          marketPagesScanned++;
-          results.push(page.markets);
-          const next = page.cursor || '';
-          if (!next || next === marketCursor) { marketCursor = ''; break; }
-          marketCursor = next;
-        }
+        const marketPagesScanned = 0;
+        const marketCursor = incomplete ? 'partial' : '';
+        const eventTitles = new Map(sports.map(e => [e.event_ticker!, e.title || e.event_ticker!]));
         const seen = new Set<string>();
         const isPlainTeamSide = (title: string): boolean => {
           const titleText = title.toLowerCase().trim();
@@ -289,11 +317,11 @@ export default {
         markets.sort((a, b) => a.askCents - b.askCents || a.event.localeCompare(b.event));
         const modeNote = markets.length ? 'Results include game moneyline and plain team-outcome contracts, deduplicated across both matching rules.' : 'No eligible game contracts found in the scanned portion of the feed.';
         return { source: 'Kalshi public API', provider, scannedAt: new Date().toISOString(),
-          sportsEvents, pagesScanned, nestedMarkets, quotedMarkets, fetchedMarkets: results.reduce((n, group) => n + group.length, 0), marketPagesScanned, rateLimited, markets, partialCoverage: Boolean(cursor || marketCursor || rateLimited),
-          note: 'Sports-only, on-demand scan. ' + modeNote + ' Quotes are displayed by contract side (YES/NO) at the current ask. Up to twenty event pages and ten market pages are checked. Coverage is partial when additional pages exist or rate limiting occurs.' };
+          sportsEvents, pagesScanned, nestedMarkets, quotedMarkets, fetchedMarkets: results.reduce((n, group) => n + group.length, 0), marketPagesScanned, rateLimited, markets, partialCoverage: Boolean(incomplete || rateLimited),
+          note: 'Sports-only, on-demand scan. ' + modeNote + ' Quotes are displayed by contract side (YES/NO) at the current ask. Discovery uses league-specific series and event IDs; coverage limits are reported. Coverage is partial when additional pages exist or rate limiting occurs.' };
         };
         const result = env.DB
-          ? await sharedScan(env.DB, min, max, fetchSnapshot)
+          ? await sharedScan(env.DB, min, max, fetchSnapshot, { scope: selectedLeague })
           : uncachedScan(await fetchSnapshot(request.signal), min, max);
         const leagueFiltered = result.markets.filter((market) => inferLeague(market.event, market.title, market.ticker) === selectedLeague);
         return json({ ...result, markets: leagueFiltered, note: result.note + ' League filter: ' + leagueLabel(selectedLeague) + '.' });
