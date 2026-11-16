@@ -1,4 +1,5 @@
-export const SNAPSHOT_TTL_MS = 60_000;
+export const SNAPSHOT_TTL_MS = 10 * 60_000;
+const PARTIAL_SNAPSHOT_TTL_MS = 60_000;
 export const LEASE_MS = 120_000;
 // R2: stop all upstream work before a lease can expire; leave room for D1 commit.
 export const SCAN_DEADLINE_MS = 90_000;
@@ -28,10 +29,13 @@ export interface ScanOutput extends ScanSnapshot {
   cache: { status: 'hit' | 'miss' | 'unavailable'; ttlSeconds: number; ageSeconds: number };
 }
 const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+function snapshotTtlMs(snapshot: ScanSnapshot): number {
+  return snapshot.partialCoverage || snapshot.rateLimited ? PARTIAL_SNAPSHOT_TTL_MS : SNAPSHOT_TTL_MS;
+}
 function filter(snapshot: ScanSnapshot, min: number, max: number, status: ScanOutput['cache']['status'], now: number): ScanOutput {
   const ageSeconds = Math.max(0, Math.floor((now - Date.parse(snapshot.scannedAt)) / 1000));
   return { ...snapshot, min, max, markets: snapshot.markets.filter(m => m.askCents >= min && m.askCents <= max),
-    cache: { status, ttlSeconds: 60, ageSeconds } };
+    cache: { status, ttlSeconds: snapshotTtlMs(snapshot) / 1000, ageSeconds } };
 }
 async function read(db: ScanDatabase, key = SCAN_KEY): Promise<Row | null> {
   return db.prepare('SELECT snapshot, captured_at, expires_at, lease_until FROM scan_cache WHERE cache_key = ?').bind(key).first<Row>();
@@ -62,7 +66,7 @@ export async function sharedScan(db: ScanDatabase, min: number, max: number, fet
       const finished = now();
       const write = await db.prepare(`UPDATE scan_cache SET snapshot = ?, captured_at = ?, expires_at = ?,
         lease_token = NULL, lease_until = NULL WHERE cache_key = ? AND lease_token = ? AND lease_until > ?`)
-        .bind(JSON.stringify(snapshot), finished, finished + SNAPSHOT_TTL_MS, key, token, finished).run();
+        .bind(JSON.stringify(snapshot), finished, finished + snapshotTtlMs(snapshot), key, token, finished).run();
       if (write.meta.changes !== 1) throw new Error('Scan lease expired before the snapshot could be saved');
       return filter(snapshot, min, max, 'miss', finished);
     } catch (error) {

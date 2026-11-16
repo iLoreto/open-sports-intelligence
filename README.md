@@ -34,6 +34,8 @@ The Worker must run for `/api/*` routes. Angular's standalone development server
 
 Connect the GitHub repository `iLoreto/open-sports-intelligence` to Cloudflare Workers, using branch `main`, root directory `apps/web`, build command `npm run build`, and deploy command `npx wrangler deploy`. The tracked `apps/web/wrangler.jsonc` declares the Worker entrypoint and static assets. It does **not** configure a cron trigger or D1 history binding.
 
+The Worker uses the existing `open-sports-radar` D1 database to share manual league scans across users and price ranges. See the [scan cache deployment guide](docs/shared-scan-cache.md) for initialization and verification.
+
 ### Market scanner API
 
 `POST /api/markets/scan?provider=kalshi&min=55&max=70`
