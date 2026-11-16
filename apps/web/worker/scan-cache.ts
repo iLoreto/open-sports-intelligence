@@ -11,7 +11,7 @@ export interface D1Statement {
 }
 export interface ScanDatabase { prepare(sql: string): D1Statement }
 export interface CachedMarket {
-  ticker: string; event: string; title: string; side: 'YES' | 'NO'; askCents: number;
+  ticker: string; event: string; title: string; gameStatus?: 'live' | 'upcoming'; side: 'YES' | 'NO'; askCents: number;
   yesBid: string | null; yesAsk: string | null; noAsk: string | null;
   last: string | null; volume24h: string | null;
 }
@@ -74,7 +74,7 @@ export async function sharedScan(db: ScanDatabase, min: number, max: number, fet
   // Other Workers are scanning. Wait for their committed result; never start a duplicate scan.
   for (let i = 0; i < (options.maxWaits ?? 40); i++) {
     await wait(500);
-    const row = await read(db);
+    const row = await read(db, key);
     if (row?.snapshot && (row.expires_at ?? 0) > now()) {
       return filter(JSON.parse(row.snapshot) as ScanSnapshot, min, max, 'hit', now());
     }
