@@ -190,11 +190,11 @@ export default {
         const catalog = await fetchJson<{ series?: Series[] }>('/series?category=Sports');
         if (!Array.isArray(catalog.series)) throw new Error('Unexpected Kalshi series response');
         const leaguePatterns: Record<ScanLeague, RegExp> = {
-          nba: /(?:^|\\W)nba(?:$|\\W)|kxnba|pro basketball/i,
-          nfl: /(?:^|\\W)nfl(?:$|\\W)|kxnfl|pro football/i,
-          nhl: /(?:^|\\W)nhl(?:$|\\W)|kxnhl|pro hockey/i,
-          mlb: /(?:^|\\W)mlb(?:$|\\W)|kxmlb|major league baseball/i,
-          wnba: /(?:^|\\W)wnba(?:$|\\W)|kxwnba/i,
+          nba: /(?:^|\W)nba(?:$|\W)|kxnba|pro basketball/i,
+          nfl: /(?:^|\W)nfl(?:$|\W)|kxnfl|pro football/i,
+          nhl: /(?:^|\W)nhl(?:$|\W)|kxnhl|pro hockey/i,
+          mlb: /(?:^|\W)mlb(?:$|\W)|kxmlb|major league baseball/i,
+          wnba: /(?:^|\W)wnba(?:$|\W)|kxwnba/i,
           ncaaf: /ncaaf|college football/i,
           ncaam: /ncaam|college basketball|men.s college basketball/i
         };
