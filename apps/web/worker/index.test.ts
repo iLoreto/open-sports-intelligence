@@ -98,7 +98,7 @@ test('scanner discovers league series, then fetches details only for discovered 
     const response = await worker.fetch(request('/api/markets/scan?provider=kalshi&league=nba&min=50&max=70', 'POST'), { ASSETS: assets });
     assert.equal(response.status, 200);
     const body = await response.json() as any;
-    assert.deepEqual(body.markets.map((m: any) => [m.side, m.askCents]), [['YES', 58]]);
+    assert.deepEqual(body.markets.map((m: any) => [m.side, m.askCents]), [['YES', 58]], JSON.stringify(body));
     assert.equal(body.partialCoverage, false);
     assert.equal(calls.length, 6);
     assert.equal(body.markets[0].gameStatus, 'live');
@@ -162,7 +162,7 @@ test('scanner recognizes upcoming matchups by team city and never labels them LI
     const response = await worker.fetch(request('/api/markets/scan?provider=kalshi&league=nba&min=50&max=70', 'POST'), { ASSETS: assets });
     assert.equal(response.status, 200);
     const body = await response.json() as any;
-    assert.equal(body.markets.length, 1);
+    assert.equal(body.markets.length, 1, JSON.stringify(body));
     assert.equal(body.markets[0].gameStatus, 'upcoming');
   } finally { globalThis.fetch = originalFetch; }
 });
