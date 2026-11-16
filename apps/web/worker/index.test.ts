@@ -2,6 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import worker from './index.ts';
 
+const scoreboardGame = (state: 'in' | 'pre' | 'post', hoursFromNow = 2) => ({
+  date: new Date(Date.now() + hoursFromNow * 3600000).toISOString(),
+  status: { type: { state, completed: state === 'post' } },
+  competitions: [{ competitors: [
+    { team: { displayName: 'Boston Celtics', name: 'Celtics' } },
+    { team: { displayName: 'Philadelphia 76ers', name: '76ers' } }
+  ] }]
+});
+
 const assets = { fetch: async () => new Response('asset') };
 const request = (path: string, method = 'GET') => new Request('https://example.test' + path, { method });
 
@@ -62,117 +71,124 @@ test('NBA compare returns computed stats from completed team schedule events', a
   }
 });
 
-test('market scan returns non-empty moneyline results and honors league filter', async () => {
+test('scanner discovers league series, then fetches details only for discovered event IDs', async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async (input) => {
-	const url = new URL(String(input));
-	if (url.pathname.endsWith('/events')) {
-	  return Response.json({
-		events: [{
-		  event_ticker: 'NBA-1',
-		  title: 'NBA: Alpha at Beta',
-		  category: 'Sports',
-		  markets: [{
-			ticker: 'NBA-1-ML',
-			title: 'Alpha to win',
-			status: 'open',
-			yes_ask_dollars: '0.58',
-			no_ask_dollars: '0.42',
-			yes_bid_dollars: '0.56',
-			last_price_dollars: '0.57',
-			volume_24h_fp: '91.3'
-		  }, {
-			ticker: 'NBA-1-TOTAL',
-			title: 'Over total',
-			status: 'active',
-			yes_ask_dollars: '0.83',
-			no_ask_dollars: '0.61',
-			yes_bid_dollars: '0.80',
-			last_price_dollars: '0.82',
-			volume_24h_fp: '55.0'
-		  }]
-		}, {
-		  event_ticker: 'NFL-1',
-		  title: 'NFL: Gamma vs Delta',
-		  category: 'Sports',
-		  markets: [{
-			ticker: 'NFL-1-ML',
-			title: 'Gamma to win',
-			status: 'open',
-			yes_ask_dollars: '0.47',
-			no_ask_dollars: '0.53',
-			yes_bid_dollars: '0.45',
-			last_price_dollars: '0.48',
-			volume_24h_fp: '77.0'
-		  }]
-		}],
-		cursor: ''
-	  });
-	}
-
-	if (url.pathname.endsWith('/markets')) {
-	  return Response.json({ markets: [{
-		ticker: 'UNRELATED-MARKET',
-		event_ticker: 'NOT-A-SPORT-EVENT',
-		title: 'Unrelated',
-		status: 'open',
-		yes_ask_dollars: '0.20',
-		no_ask_dollars: '0.80'
-	  }, {
-		ticker: 'NBA-BOS-PHI-ML',
-		event_ticker: 'KX_UNKNOWN_NBA',
-		title: 'Yes Boston',
-		status: 'open',
-		yes_ask_dollars: '0.54',
-		no_ask_dollars: '0.46'
-	  }, {
-		ticker: 'NBA-SPREAD-EXAMPLE',
-		event_ticker: 'KX_UNKNOWN_NBA',
-		title: 'No PHN 8.5 points',
-		status: 'open',
-		yes_ask_dollars: '0.52',
-		no_ask_dollars: '0.48'
-	  }, {
-		ticker: 'KXNBARETIRE-KLEONARD-2031',
-		event_ticker: 'KX_UNKNOWN_NBA',
-		title: 'Will Kawhi Leonard announce his retirement before the 2030-31 NBA season?',
-		status: 'open',
-		yes_ask_dollars: '0.50',
-		no_ask_dollars: '0.50'
-	  }, {
-		ticker: 'KXNBASEATTLE-30',
-		event_ticker: 'KX_UNKNOWN_NBA',
-		title: 'Will a Seattle NBA team play a game before 2030?',
-		status: 'open',
-		yes_ask_dollars: '0.83',
-		no_ask_dollars: '0.21'
-	  }], cursor: '' });
-	}
-
-	throw new Error('Unexpected URL ' + url.toString());
+  const game = scoreboardGame('in');
+  const calls: URL[] = [];
+  globalThis.fetch = async input => {
+    const url = new URL(String(input));
+    calls.push(url);
+    if (url.hostname === 'site.api.espn.com') return Response.json({ events: [game] });
+    if (url.pathname.endsWith('/series')) return Response.json({ series: [
+      { ticker: 'KXNBAGAME', title: 'NBA games', category: 'Sports' },
+      { ticker: 'KXNFLGAME', title: 'NFL games', category: 'Sports' },
+      { ticker: 'KXECON', title: 'Economics', category: 'Economics' }
+    ] });
+    if (url.pathname.endsWith('/events')) {
+      assert.equal(url.searchParams.get('series_ticker'), 'KXNBAGAME');
+      return Response.json({ events: [{ event_ticker: 'KXNBAGAME-26NOV16', title: 'Boston at Philadelphia' }], cursor: '' });
+    }
+    if (url.pathname.endsWith('/markets')) {
+      assert.equal(url.searchParams.get('event_ticker'), 'KXNBAGAME-26NOV16');
+      return Response.json({ markets: [{ ticker: 'KXNBAGAME-26NOV16-ML', title: 'Yes Boston', status: 'open',
+        yes_ask_dollars: '0.58', no_ask_dollars: '0.42' }], cursor: '' });
+    }
+    throw new Error('Unexpected upstream request: ' + url);
   };
-
   try {
-	const nbaResponse = await worker.fetch(request('/api/markets/scan?provider=kalshi&league=nba&min=1&max=99', 'POST'), { ASSETS: assets });
-	assert.equal(nbaResponse.status, 200);
-	const nbaBody = await nbaResponse.json() as any;
-	assert.ok(Array.isArray(nbaBody.markets));
-	assert.equal(nbaBody.markets.length, 4);
-	assert.deepEqual(nbaBody.markets.map((market: any) => [market.ticker, market.side, market.askCents]), [
-	  ['NBA-1-ML', 'NO', 42],
-	  ['NBA-BOS-PHI-ML', 'NO', 46],
-	  ['NBA-BOS-PHI-ML', 'YES', 54],
-	  ['NBA-1-ML', 'YES', 58]
-	]);
+    const response = await worker.fetch(request('/api/markets/scan?provider=kalshi&league=nba&min=50&max=70', 'POST'), { ASSETS: assets });
+    assert.equal(response.status, 200);
+    const body = await response.json() as any;
+    assert.deepEqual(body.markets.map((m: any) => [m.side, m.askCents]), [['YES', 58]], JSON.stringify(body));
+    assert.equal(body.partialCoverage, false);
+    assert.equal(calls.length, 6);
+    assert.equal(body.markets[0].gameStatus, 'live');
+    assert.ok(calls.every(url => !url.pathname.endsWith('/markets') || url.searchParams.has('event_ticker')));
+  } finally { globalThis.fetch = originalFetch; }
+});
 
-	const nflResponse = await worker.fetch(request('/api/markets/scan?provider=kalshi&league=nfl&min=1&max=99', 'POST'), { ASSETS: assets });
-	assert.equal(nflResponse.status, 200);
-	const nflBody = await nflResponse.json() as any;
-	assert.deepEqual(nflBody.markets.map((market: any) => [market.ticker, market.side, market.askCents]), [
-	  ['NFL-1-ML', 'YES', 47],
-	  ['NFL-1-ML', 'NO', 53]
-	]);
-  } finally {
-	globalThis.fetch = originalFetch;
-  }
+test('scanner reports incomplete discovery instead of claiming full coverage', async () => {
+  const originalFetch = globalThis.fetch;
+  const game = scoreboardGame('pre');
+  globalThis.fetch = async input => {
+    const url = new URL(String(input));
+    if (url.hostname === 'site.api.espn.com') return Response.json({ events: [game] });
+    if (url.pathname.endsWith('/series')) return Response.json({ series: [{ ticker: 'KXNBAGAME', category: 'Sports' }] });
+    if (url.pathname.endsWith('/events')) return Response.json({ events: [], cursor: 'more-' + (url.searchParams.get('cursor') || 'first') });
+    throw new Error('Unexpected detail call');
+  };
+  try {
+    const response = await worker.fetch(request('/api/markets/scan?provider=kalshi&league=nba&min=1&max=99', 'POST'), { ASSETS: assets });
+    assert.equal(response.status, 200);
+    assert.equal((await response.json() as any).partialCoverage, true);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('scanner excludes events outside 12 hours before requesting market details', async () => {
+  const originalFetch = globalThis.fetch;
+  const game = scoreboardGame('pre', 24);
+  let detailCalls = 0;
+  globalThis.fetch = async input => {
+    const url = new URL(String(input));
+    if (url.hostname === 'site.api.espn.com') return Response.json({ events: [game] });
+    if (url.pathname.endsWith('/series')) return Response.json({ series: [{ ticker: 'KXNBAGAME', category: 'Sports' }] });
+    if (url.pathname.endsWith('/events')) return Response.json({ events: [{ event_ticker: 'KXNBAGAME-OUTSIDE', title: 'Boston at Philadelphia' }], cursor: '' });
+    if (url.pathname.endsWith('/markets')) { detailCalls++; return Response.json({ markets: [] }); }
+    throw new Error('Unexpected request: ' + url);
+  };
+  try {
+    const response = await worker.fetch(request('/api/markets/scan?provider=kalshi&league=nba&min=1&max=99', 'POST'), { ASSETS: assets });
+    assert.equal(response.status, 200);
+    assert.equal((await response.json() as any).markets.length, 0);
+    assert.equal(detailCalls, 0);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('scanner recognizes upcoming matchups by team city and never labels them LIVE', async () => {
+  const originalFetch = globalThis.fetch;
+  const game = scoreboardGame('pre', 3);
+  globalThis.fetch = async input => {
+    const url = new URL(String(input));
+    if (url.hostname === 'site.api.espn.com') return Response.json({ events: [game] });
+    if (url.pathname.endsWith('/series')) return Response.json({ series: [
+      { ticker: 'KXNBAGAME', category: 'Sports' }, { ticker: 'KXNBAFINAL', category: 'Sports' }
+    ] });
+    if (url.pathname.endsWith('/events')) return Response.json({ events: [
+      { event_ticker: 'KXNBAGAME-TODAY', title: 'Boston at Philadelphia' }
+    ], cursor: '' });
+    if (url.pathname.endsWith('/markets')) return Response.json({ markets: [
+      { ticker: 'KXNBAGAME-TODAY-ML', title: 'Yes Boston', status: 'open',
+        yes_ask_dollars: '0.60', no_ask_dollars: '0.40' }
+    ], cursor: '' });
+    throw new Error('Unexpected request: ' + url);
+  };
+  try {
+    const response = await worker.fetch(request('/api/markets/scan?provider=kalshi&league=nba&min=50&max=70', 'POST'), { ASSETS: assets });
+    assert.equal(response.status, 200);
+    const body = await response.json() as any;
+    assert.equal(body.markets.length, 1, JSON.stringify(body));
+    assert.equal(body.markets[0].gameStatus, 'upcoming');
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('scanner excludes completed games and never requests their contract details', async () => {
+  const originalFetch = globalThis.fetch;
+  const game = scoreboardGame('post', -2);
+  let detailCalls = 0;
+  globalThis.fetch = async input => {
+    const url = new URL(String(input));
+    if (url.hostname === 'site.api.espn.com') return Response.json({ events: [game] });
+    if (url.pathname.endsWith('/series')) return Response.json({ series: [{ ticker: 'KXNBAGAME', category: 'Sports' }] });
+    if (url.pathname.endsWith('/events')) return Response.json({ events: [
+      { event_ticker: 'KXNBAGAME-FINAL', title: 'Boston at Philadelphia' }
+    ], cursor: '' });
+    if (url.pathname.endsWith('/markets')) { detailCalls++; return Response.json({ markets: [] }); }
+    throw new Error('Unexpected request: ' + url);
+  };
+  try {
+    const response = await worker.fetch(request('/api/markets/scan?provider=kalshi&league=nba&min=1&max=99', 'POST'), { ASSETS: assets });
+    assert.equal(response.status, 200);
+    assert.equal((await response.json() as any).markets.length, 0);
+    assert.equal(detailCalls, 0);
+  } finally { globalThis.fetch = originalFetch; }
 });
