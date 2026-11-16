@@ -11,13 +11,13 @@ export interface D1Statement {
 }
 export interface ScanDatabase { prepare(sql: string): D1Statement }
 export interface CachedMarket {
-  ticker: string; event: string; title: string; gameStatus?: 'live' | 'upcoming'; side: 'YES' | 'NO'; askCents: number;
+  ticker: string; event: string; title: string; gameStatus?: 'live' | 'upcoming'; gameStartAt?: string; side: 'YES' | 'NO'; askCents: number;
   yesBid: string | null; yesAsk: string | null; noAsk: string | null;
   last: string | null; volume24h: string | null;
 }
 export interface ScanSnapshot {
   source: string; provider: string; scannedAt: string;
-  sportsEvents: number; pagesScanned: number; nestedMarkets: number;
+  scheduledGames?: number; sportsEvents: number; pagesScanned: number; nestedMarkets: number;
   quotedMarkets: number; fetchedMarkets: number; partialCoverage: boolean;
   marketPagesScanned?: number; rateLimited?: boolean;
   note: string; markets: CachedMarket[];
