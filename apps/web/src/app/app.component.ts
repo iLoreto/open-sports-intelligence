@@ -11,6 +11,16 @@ interface NhlXgComparison { source: string; fetchedAt: string; season: number; l
 interface Market { eventTicker?: string; gameStatus?: 'live' | 'upcoming' | 'final'; gameStartAt?: string; ticker: string; event: string; title: string; side: 'YES' | 'NO'; askCents: number; yesBid: string | null; yesAsk: string | null; noAsk: string | null; last: string | null; volume24h: string | null }
 interface ScanResult { source: string; scannedAt: string; markets: Market[]; partialCoverage: boolean; note: string; pagesScanned: number; sportsEvents: number; scheduledGames?: number }
 interface Comparison { source: string; fetchedAt: string; sample: number; left: Stats; right: Stats; partial: boolean; note: string; h2h?: { games: number; leftWins: number; rightWins: number; ties: number; meetings: { date: string; leftScore: number; rightScore: number }[] }; metricProfile?: { unit: string; available: string[]; unavailable: string[] } }
+const kalshiSeriesSlugs: Readonly<Record<string, string>> = {
+  kxnbagame: 'nba-game',
+  kxnflgame: 'nfl-game',
+  kxnhlgame: 'nhl-game',
+  kxmlbgame: 'professional-baseball-game',
+  kxwnbagame: 'womens-pro-basketball-game',
+  kxncaafgame: 'college-football-game',
+  kxncaambgame: 'mens-college-basketball-game'
+};
+
 @Component({
   selector: 'osi-root', standalone: true, imports: [CommonModule],
   template: `
@@ -153,7 +163,17 @@ interface Comparison { source: string; fetchedAt: string; sample: number; left: 
   `]
 })
 export class AppComponent {
-  marketUrl(m: Market): string { return 'https://kalshi.com/markets/' + encodeURIComponent(m.ticker.toLowerCase()); }
+  marketUrl(offer: Market): string {
+    // Older snapshots may omit the event ticker. Game-winner markets append a team suffix.
+    const eventTicker = (offer.eventTicker ?? offer.ticker.replace(/-[^-]+$/, '')).toLowerCase();
+    const series = eventTicker.split('-')[0];
+    const matchupSlug = offer.event.toLowerCase().replace(/['’]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    const slug = kalshiSeriesSlugs[series] ?? (matchupSlug || series);
+    const path = [series, slug, eventTicker].map(encodeURIComponent).join('/');
+    const url = new URL('https://kalshi.com/markets/' + path);
+    url.searchParams.set('op_market_ticker', offer.ticker);
+    return url.href;
+  }
   readonly tab = signal<'research' | 'markets'>('research');
   readonly provider = signal<'kalshi' | 'novig'>('kalshi');
   readonly minPrice = signal(50); readonly maxPrice = signal(72);
