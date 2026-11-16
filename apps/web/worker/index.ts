@@ -201,6 +201,50 @@ export default {
         const selectedSeries = catalog.series.filter(series =>
           series.category?.toLowerCase() === 'sports' &&
           leaguePatterns[selectedLeague].test([series.ticker, series.title, ...(series.tags || [])].join(' ')));
+        // Use the authoritative scoreboard to limit discovery to the next 12 hours,
+        // while retaining games already in progress. Never infer LIVE from kickoff alone.
+        type ScoreTeam = { team?: { displayName?: string; shortDisplayName?: string; name?: string; abbreviation?: string } };
+        type ScoreGame = { date?: string; status?: { type?: { state?: string; completed?: boolean } }; competitions?: { competitors?: ScoreTeam[] }[] };
+        const espnPaths: Record<ScanLeague, string> = {
+          nba: 'basketball/nba', nfl: 'football/nfl', nhl: 'hockey/nhl',
+          mlb: 'baseball/mlb', wnba: 'basketball/wnba',
+          ncaaf: 'football/college-football', ncaam: 'basketball/mens-college-basketball'
+        };
+        const nowMs = Date.now();
+        const twelveHours = 12 * 60 * 60 * 1000;
+        const day = (offset: number) => new Date(nowMs + offset * 86400000).toISOString().slice(0, 10).replace(/-/g, '');
+        const scoreboard = await Promise.all([-1, 0, 1].map(async offset => {
+          const response = await fetch('https://site.api.espn.com/apis/site/v2/sports/' +
+            espnPaths[selectedLeague] + '/scoreboard?dates=' + day(offset) + '&limit=200', {
+              headers: { Accept: 'application/json' },
+              signal: AbortSignal.any([scanSignal, AbortSignal.timeout(13000)])
+            });
+          if (!response.ok) throw new Error('ESPN scoreboard HTTP ' + response.status);
+          const payload = await response.json() as { events?: ScoreGame[] };
+          if (!Array.isArray(payload.events)) throw new Error('Unexpected ESPN scoreboard response');
+          return payload.events;
+        }));
+        const eligibleGames = scoreboard.flat().filter(game => {
+          const state = game.status?.type?.state;
+          if (game.status?.type?.completed || state === 'post') return false;
+          if (state === 'in') return true;
+          const start = Date.parse(game.date || '');
+          return state === 'pre' && Number.isFinite(start) && start >= nowMs && start <= nowMs + twelveHours;
+        });
+        const normalize = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const gameMatch = (eventTitle: string): ScoreGame | undefined => eligibleGames.find(game => {
+          const teams = game.competitions?.[0]?.competitors || [];
+          if (teams.length !== 2) return false;
+          const title = normalize(eventTitle);
+          return teams.every(({ team }) => {
+            const full = team?.displayName || '';
+            const city = full.split(' ').slice(0, -1).join(' ');
+            const aliases = [full, city, team?.name || '', team?.shortDisplayName || '']
+              .filter((alias): alias is string => alias.length >= 4);
+            return aliases.some(alias => title.includes(normalize(alias)));
+          });
+        });
+        const gameStatus = new Map<string, 'live' | 'upcoming'>();
         const eventIds = new Map<string, Event>();
         // Bound upstream work explicitly; incomplete scans must not masquerade as full coverage.
         const MAX_SERIES = 80;
@@ -214,7 +258,13 @@ export default {
             const page = await fetchJson<{ events?: Event[]; cursor?: string }>('/events?' + query);
             if (!Array.isArray(page.events)) throw new Error('Unexpected Kalshi events response');
             pagesScanned++;
-            for (const event of page.events) if (event.event_ticker) eventIds.set(event.event_ticker, event);
+            for (const event of page.events) {
+              if (!event.event_ticker) continue;
+              const game = gameMatch(event.title || '');
+              if (!game) continue;
+              eventIds.set(event.event_ticker, event);
+              gameStatus.set(event.event_ticker, game.status?.type?.state === 'in' ? 'live' : 'upcoming');
+            }
             const next = page.cursor || '';
             if (!next) { cursor = ''; break; }
             if (next === cursor) throw new Error('Kalshi event pagination cursor repeated');
@@ -279,7 +329,7 @@ export default {
           const explicitMl = /(?:^|[-_])ml(?:$|[-_])/i.test(ticker);
           return (gameContext && isPlainTeamSide(titleText)) || explicitMl;
         };
-        const addMarket = (market: Quote & { event_ticker?: string }, event: string, mode: 'strict' | 'fallback' = 'strict') => {
+        const addMarket = (market: Quote & { event_ticker?: string }, event: string, status: 'live' | 'upcoming', mode: 'strict' | 'fallback' = 'strict') => {
           if (!market.ticker || (market.status && !['open', 'active'].includes(market.status))) return;
           const title = market.title || market.ticker;
           if (mode === 'strict' ? !isMoneylineMarket(event, title, market.ticker) : !isLeagueOutcomeContract(event, title, market.ticker)) return;
@@ -290,29 +340,29 @@ export default {
             if (typeof ask !== 'string' || !/^\d+(?:\.\d+)?$/.test(ask)) continue;
             quotedMarkets++;
             const cents = Math.round(Number(ask) * 100);
-            markets.push({ ticker: market.ticker, event,
+            markets.push({ ticker: market.ticker, event, gameStatus: status,
               title, side, askCents: cents,
               yesBid: market.yes_bid_dollars ?? null, yesAsk: market.yes_ask_dollars ?? null,
               noAsk: market.no_ask_dollars ?? null, last: market.last_price_dollars ?? null,
               volume24h: market.volume_24h_fp ?? null });
           }
         };
-        const allSources: { market: Quote & { event_ticker?: string }; event: string }[] = [];
+        const allSources: { market: Quote & { event_ticker?: string }; event: string; status: 'live' | 'upcoming' }[] = [];
         for (const market of results.flat()) {
           if (!market.event_ticker) continue;
-          allSources.push({ market, event: eventTitles.get(market.event_ticker) || market.event_ticker });
+          allSources.push({ market, event: eventTitles.get(market.event_ticker) || market.event_ticker, status: gameStatus.get(market.event_ticker) || 'upcoming' });
         }
         for (const event of sports) {
           if (!event.event_ticker) continue;
           for (const market of event.markets || []) {
-            allSources.push({ market, event: event.title || event.event_ticker });
+            allSources.push({ market, event: event.title || event.event_ticker, status: gameStatus.get(event.event_ticker) || 'upcoming' });
           }
         }
         // Include qualifying team-outcome contracts for every league, not only when
         // the entire multi-league scan has zero strict matches. Deduplication keeps
         // a market found by both passes from appearing twice.
-        for (const source of allSources) addMarket(source.market, source.event, 'strict');
-        for (const source of allSources) addMarket(source.market, source.event, 'fallback');
+        for (const source of allSources) addMarket(source.market, source.event, source.status, 'strict');
+        for (const source of allSources) addMarket(source.market, source.event, source.status, 'fallback');
         scanSignal.throwIfAborted();
         markets.sort((a, b) => a.askCents - b.askCents || a.event.localeCompare(b.event));
         const modeNote = markets.length ? 'Results include game moneyline and plain team-outcome contracts, deduplicated across both matching rules.' : 'No eligible game contracts found in the scanned portion of the feed.';
