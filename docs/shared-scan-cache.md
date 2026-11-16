@@ -10,7 +10,7 @@ The Worker binds the existing `open-sports-radar` database as `DB` in `apps/web/
 npx wrangler d1 execute DB --remote --file migrations/0001_scan_cache.sql
 ```
 
-To verify an expired or empty cache, run two manual scans for the same league with different price ranges. The first should report `cache.status: "miss"`. The second should report `"hit"`, with the same `scannedAt`. Without the binding, the Worker reports `cache.status: "unavailable"`.
+To verify an expired or empty cache, run two manual scans for the same league with different price ranges. The first should report `cache.status: "miss"`. The second should report `"hit"`, with the same `scannedAt`. Without the binding or the cache table, the Worker returns a direct scan and reports `cache.status: "unavailable"`.
 
 ## Semantics
 - The cache uses one key per league, such as `kalshi:sports:open:v1:nba`.

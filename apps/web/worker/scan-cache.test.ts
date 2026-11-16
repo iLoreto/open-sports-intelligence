@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import { sharedScan, SNAPSHOT_TTL_MS, type ScanSnapshot, type ScanDatabase } from './scan-cache.ts';
 
 function fakeDb(onClaim?: () => Promise<void>) {
@@ -163,4 +165,34 @@ test('R2: expired lease cannot commit a late snapshot', async () => {
   }, { now: () => clock }), /lease expired/);
   const retry = await sharedScan(db, 1, 99, async () => snapshot(), { now: () => clock });
   assert.equal(retry.cache.status, 'miss');
+});
+test('scans when the cache table is missing and shares snapshots after migration', async t => {
+  const sqlite = new DatabaseSync(':memory:');
+  t.after(() => sqlite.close());
+  const db: ScanDatabase = {
+    prepare(sql) {
+      let args: SQLInputValue[] = [];
+      const stmt = {
+        bind(...values: unknown[]) { args = values as SQLInputValue[]; return stmt; },
+        async first<T>() { return (sqlite.prepare(sql).get(...args) as T | undefined) ?? null; },
+        async run() { return { meta: { changes: Number(sqlite.prepare(sql).run(...args).changes) } }; }
+      };
+      return stmt;
+    }
+  };
+  let fetches = 0;
+  const fetchSnapshot = async () => { fetches++; return snapshot(); };
+  const options = { scope: 'nba', now: () => clock };
+  const uncached = await sharedScan(db, 55, 65, fetchSnapshot, options);
+  assert.equal(uncached.cache.status, 'unavailable');
+  assert.deepEqual(uncached.markets.map(m => m.askCents), [55]);
+  assert.equal(fetches, 1);
+
+  sqlite.exec(readFileSync(new URL('../migrations/0001_scan_cache.sql', import.meta.url), 'utf8'));
+  const first = await sharedScan(db, 55, 65, fetchSnapshot, options);
+  const wider = await sharedScan(db, 55, 72, fetchSnapshot, options);
+  assert.equal(first.cache.status, 'miss');
+  assert.equal(wider.cache.status, 'hit');
+  assert.deepEqual(wider.markets.map(m => m.askCents), [55, 68]);
+  assert.equal(fetches, 2);
 });
