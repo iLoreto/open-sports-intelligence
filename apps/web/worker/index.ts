@@ -1,3 +1,4 @@
+import { espnScoreValue as scoreValue, espnTeamSports, getMatchupAnalysis, type EspnScore, type EspnTeamSport } from './matchup-analysis.ts';
 import { getNationsScoreboard } from './nations-scoreboard.ts';
 import { moneyPuckComparison } from './moneypuck.ts';
 import { sharedScan, uncachedScan, type ScanSnapshot, type ScanDatabase } from './scan-cache.ts';
@@ -18,17 +19,6 @@ class KalshiRateLimitError extends Error {
   }
 }
 function validDate(value: string): boolean { return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value)); }
-type EspnScore = string | number | { value?: number | string; displayValue?: string };
-const scoreValue = (score: EspnScore | undefined): number => {
-  if (typeof score === 'number') return score;
-  if (typeof score === 'string') return Number(score);
-  if (score && typeof score === 'object') {
-    if (typeof score.value === 'number') return score.value;
-    if (typeof score.value === 'string') return Number(score.value);
-    if (typeof score.displayValue === 'string') return Number(score.displayValue);
-  }
-  return Number.NaN;
-};
 const NBA_ABBREVIATIONS = ['ATL','BOS','BKN','CHA','CHI','CLE','DAL','DEN','DET','GS','HOU','IND','LAC','LAL','MEM','MIA','MIL','MIN','NO','NY','OKC','ORL','PHI','PHX','POR','SAC','SA','TOR','UTAH','WSH'];
 async function espnComparison(left: number, right: number, sample: number) {
   // ESPN scoreboard rejects large date-range requests (HTTP 400). Query each
@@ -151,6 +141,20 @@ export default {
     }
     if (url.pathname === '/api/tennis/status') return json({ message: 'Tennis data provider not configured. Challenger and ITF coverage must be verified.', configured: false }, 503);
 
+    if (url.pathname === '/api/games/analyze') {
+      if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
+      const league = url.searchParams.get('league') || '';
+      const game = url.searchParams.get('game') || '';
+      if (!Object.hasOwn(espnTeamSports, league) || !/^\d{1,12}$/.test(game)) {
+        return json({ error: 'Select a supported ESPN matchup.' }, 400);
+      }
+      try {
+        return json(await getMatchupAnalysis(league as EspnTeamSport, game, request.signal));
+      } catch (error) {
+        return json({ error: error instanceof Error ? error.message : 'ESPN matchup analysis unavailable' }, 502);
+      }
+    }
+
     if (url.pathname === '/api/markets/scan') {
       if (request.method !== 'POST') return json({ error: 'Use the Scan button to initiate a POST request.' }, 405);
       const provider = url.searchParams.get('provider') || 'kalshi';
@@ -217,12 +221,6 @@ export default {
         // while retaining games already in progress. Never infer LIVE from kickoff alone.
         type ScoreTeam = { team?: { displayName?: string; shortDisplayName?: string; name?: string; abbreviation?: string; location?: string } };
         type ScoreGame = { id?: string; date?: string; status?: { type?: { state?: string; completed?: boolean } }; competitions?: { competitors?: ScoreTeam[] }[] };
-        const espnPaths: Record<ScanLeague, string> = {
-          nba: 'basketball/nba', nfl: 'football/nfl', nhl: 'hockey/nhl',
-          mlb: 'baseball/mlb', wnba: 'basketball/wnba',
-          ncaaf: 'football/college-football', ncaam: 'basketball/mens-college-basketball',
-          ncaav: 'volleyball/womens-college-volleyball'
-        };
         const gameSeries: Record<ScanLeague, string> = {
           nba: 'KXNBAGAME', nfl: 'KXNFLGAME', nhl: 'KXNHLGAME', mlb: 'KXMLBGAME',
           wnba: 'KXWNBAGAME', ncaaf: 'KXNCAAFGAME', ncaam: 'KXNCAAMBGAME', ncaav: 'KXNCAAWVMATCH'
@@ -232,7 +230,7 @@ export default {
         const day = (offset: number) => new Date(nowMs + offset * 86400000).toISOString().slice(0, 10).replace(/-/g, '');
         const scoreboard = await Promise.all([-1, 0, 1].map(async offset => {
           const response = await fetch('https://site.api.espn.com/apis/site/v2/sports/' +
-            espnPaths[selectedLeague] + '/scoreboard?dates=' + day(offset) + '&limit=200' +
+            espnTeamSports[selectedLeague] + '/scoreboard?dates=' + day(offset) + '&limit=200' +
               (selectedLeague === 'ncaam' ? '&groups=50' : selectedLeague === 'ncaaf' ? '&groups=80' : ''), {
               headers: { Accept: 'application/json' },
               signal: AbortSignal.any([scanSignal, AbortSignal.timeout(13000)])
@@ -378,7 +376,7 @@ export default {
             if (typeof ask !== 'string' || !/^\d+(?:\.\d+)?$/.test(ask)) continue;
             quotedMarkets++;
             const cents = Math.round(Number(ask) * 100);
-            markets.push({ ticker: market.ticker, event, eventTicker: kalshiEvent.event_ticker, gameStartAt: game.date,
+            markets.push({ ticker: market.ticker, event, eventTicker: kalshiEvent.event_ticker, espnGameId: game.id, gameStartAt: game.date,
               gameStatus: game.status?.type?.state === 'in' ? 'live' : 'upcoming',
               title, side, askCents: cents,
               yesBid: market.yes_bid_dollars ?? null, yesAsk: market.yes_ask_dollars ?? null,

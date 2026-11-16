@@ -3,7 +3,7 @@ const PARTIAL_SNAPSHOT_TTL_MS = 60_000;
 export const LEASE_MS = 120_000;
 // R2: stop all upstream work before a lease can expire; leave room for D1 commit.
 export const SCAN_DEADLINE_MS = 90_000;
-export const SCAN_KEY = 'kalshi:sports:open:v1';
+export const SCAN_KEY = 'kalshi:sports:open:v2';
 
 export interface D1Statement {
   bind(...values: unknown[]): D1Statement;
@@ -12,7 +12,7 @@ export interface D1Statement {
 }
 export interface ScanDatabase { prepare(sql: string): D1Statement }
 export interface CachedMarket {
-  ticker: string; event: string; eventTicker?: string; title: string; gameStatus?: 'live' | 'upcoming'; gameStartAt?: string; side: 'YES' | 'NO'; askCents: number;
+  ticker: string; event: string; eventTicker?: string; espnGameId?: string; title: string; gameStatus?: 'live' | 'upcoming'; gameStartAt?: string; side: 'YES' | 'NO'; askCents: number;
   yesBid: string | null; yesAsk: string | null; noAsk: string | null;
   last: string | null; volume24h: string | null;
 }

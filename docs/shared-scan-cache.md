@@ -13,7 +13,7 @@ npx wrangler d1 execute DB --remote --file migrations/0001_scan_cache.sql
 To verify an expired or empty cache, run two manual scans for the same league with different price ranges. The first should report `cache.status: "miss"`. The second should report `"hit"`, with the same `scannedAt`. Without the binding or the cache table, the Worker returns a direct scan and reports `cache.status: "unavailable"`.
 
 ## Semantics
-- The cache uses one key per league, such as `kalshi:sports:open:v1:nba`.
+- The cache uses one key per league, such as `kalshi:sports:open:v2:nba`.
 - Complete snapshots expire after ten minutes. Incomplete snapshots expire after one minute. The original `scannedAt` is returned with the cache age.
 - Lease: 120 seconds; R2 review fixes add an atomic freshness predicate to the lease claim and a 90-second scan-wide abort signal passed into every Kalshi fetch. Expired lease owners cannot commit snapshots. Waiting requests poll for a completed snapshot, then receive a retryable error rather than issuing duplicate scans.
 - A failed scan releases its lease. Stale data is not silently substituted.
