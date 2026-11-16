@@ -200,7 +200,9 @@ export default {
         };
         const selectedSeries = catalog.series.filter(series =>
           series.category?.toLowerCase() === 'sports' &&
-          leaguePatterns[selectedLeague].test([series.ticker, series.title, ...(series.tags || [])].join(' ')));
+          leaguePatterns[selectedLeague].test([series.ticker, series.title, ...(series.tags || [])].join(' ')) &&
+          /(?:GAME|MATCH|MONEYLINE|ML)/i.test(series.ticker) &&
+          !/(?:FUTURE|CHAMP|SEASON|PROP|TOTAL|SPREAD)/i.test(series.ticker));
         // Use the authoritative scoreboard to limit discovery to the next 12 hours,
         // while retaining games already in progress. Never infer LIVE from kickoff alone.
         type ScoreTeam = { team?: { displayName?: string; shortDisplayName?: string; name?: string; abbreviation?: string } };
@@ -232,18 +234,23 @@ export default {
           return state === 'pre' && Number.isFinite(start) && start >= nowMs && start <= nowMs + twelveHours;
         });
         const normalize = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, '');
-        const gameMatch = (eventTitle: string): ScoreGame | undefined => eligibleGames.find(game => {
-          const teams = game.competitions?.[0]?.competitors || [];
-          if (teams.length !== 2) return false;
+        const gameMatch = (eventTitle: string): ScoreGame | undefined => {
+          // A matchup must explicitly name both opponents; ambiguous aliases are not sufficient.
+          if (!/\\b(?:at|vs|versus|v)\\b|@/i.test(eventTitle)) return undefined;
           const title = normalize(eventTitle);
-          return teams.every(({ team }) => {
-            const full = team?.displayName || '';
-            const city = full.split(' ').slice(0, -1).join(' ');
-            const aliases = [full, city, team?.name || '', team?.shortDisplayName || '']
-              .filter((alias): alias is string => alias.length >= 4);
-            return aliases.some(alias => title.includes(normalize(alias)));
+          const matches = eligibleGames.filter(game => {
+            const teams = game.competitions?.[0]?.competitors || [];
+            if (teams.length !== 2) return false;
+            return teams.every(({ team }) => {
+              const full = team?.displayName || '';
+              const city = full.split(' ').slice(0, -1).join(' ');
+              const aliases = [full, city, team?.name || '', team?.shortDisplayName || '']
+                .filter((alias): alias is string => alias.length >= 4);
+              return aliases.some(alias => title.includes(normalize(alias)));
+            });
           });
-        });
+          return matches.length === 1 ? matches[0] : undefined;
+        };
         const gameStatus = new Map<string, 'live' | 'upcoming'>();
         const eventIds = new Map<string, Event>();
         // Bound upstream work explicitly; incomplete scans must not masquerade as full coverage.
