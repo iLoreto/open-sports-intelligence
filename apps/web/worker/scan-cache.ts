@@ -12,7 +12,7 @@ export interface D1Statement {
 }
 export interface ScanDatabase { prepare(sql: string): D1Statement }
 export interface CachedMarket {
-  ticker: string; event: string; title: string; gameStatus?: 'live' | 'upcoming'; gameStartAt?: string; side: 'YES' | 'NO'; askCents: number;
+  ticker: string; event: string; eventTicker?: string; title: string; gameStatus?: 'live' | 'upcoming'; gameStartAt?: string; side: 'YES' | 'NO'; askCents: number;
   yesBid: string | null; yesAsk: string | null; noAsk: string | null;
   last: string | null; volume24h: string | null;
 }
