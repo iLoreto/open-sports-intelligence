@@ -161,7 +161,7 @@ export default {
         if (/kxnfl|\bnfl\b|super bowl|pro football/.test(text)) return 'nfl';
         if (/kxnhl|\bnhl\b|stanley cup|hockey/.test(text)) return 'nhl';
         if (/kxmlb|\bmlb\b|world series|baseball/.test(text)) return 'mlb';
-        if (/\bnba\b|celtics|76ers|lakers|warriors|knicks|bulls|bucks|heat|nets|suns|mavericks|spurs|raptors|cavaliers|nuggets|timberwolves|pelicans|thunder|magic|grizzlies|hawks|hornets|pistons|pacers|rockets|clippers|trail blazers|wizards|jazz|kings|\bbos\b|\bphi\b|boston pro basketball|philadelphia pro basketball/.test(text)) return 'nba';
+        if (/kxnba|\bnba\b|celtics|76ers|lakers|warriors|knicks|bulls|bucks|heat|nets|suns|mavericks|spurs|raptors|cavaliers|nuggets|timberwolves|pelicans|thunder|magic|grizzlies|hawks|hornets|pistons|pacers|rockets|clippers|trail blazers|wizards|jazz|kings|\bbos\b|\bphi\b|boston pro basketball|philadelphia pro basketball/.test(text)) return 'nba';
         if (/wins by over\s+\d+(?:\.\d+)?\s+points/.test(text) && /\b(boston|philadelphia|new york|miami|phoenix|orlando|oklahoma city|san antonio|toronto|utah|washington|chicago|cleveland|dallas|denver|detroit|houston|indiana|memphis|minnesota|new orleans|portland|sacramento|los angeles|milwaukee|atlanta|charlotte)\b/.test(text)) return 'nba';
         return null;
       };
