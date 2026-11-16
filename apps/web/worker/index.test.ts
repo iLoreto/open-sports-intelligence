@@ -73,11 +73,12 @@ test('NBA compare returns computed stats from completed team schedule events', a
 
 test('scanner discovers league series, then fetches details only for discovered event IDs', async () => {
   const originalFetch = globalThis.fetch;
+  const game = scoreboardGame('in');
   const calls: URL[] = [];
   globalThis.fetch = async input => {
     const url = new URL(String(input));
     calls.push(url);
-    if (url.hostname === 'site.api.espn.com') return Response.json({ events: [scoreboardGame('in')] });
+    if (url.hostname === 'site.api.espn.com') return Response.json({ events: [game] });
     if (url.pathname.endsWith('/series')) return Response.json({ series: [
       { ticker: 'KXNBAGAME', title: 'NBA games', category: 'Sports' },
       { ticker: 'KXNFLGAME', title: 'NFL games', category: 'Sports' },
@@ -108,9 +109,10 @@ test('scanner discovers league series, then fetches details only for discovered 
 
 test('scanner reports incomplete discovery instead of claiming full coverage', async () => {
   const originalFetch = globalThis.fetch;
+  const game = scoreboardGame('pre');
   globalThis.fetch = async input => {
     const url = new URL(String(input));
-    if (url.hostname === 'site.api.espn.com') return Response.json({ events: [scoreboardGame('pre')] });
+    if (url.hostname === 'site.api.espn.com') return Response.json({ events: [game] });
     if (url.pathname.endsWith('/series')) return Response.json({ series: [{ ticker: 'KXNBAGAME', category: 'Sports' }] });
     if (url.pathname.endsWith('/events')) return Response.json({ events: [], cursor: 'more-' + (url.searchParams.get('cursor') || 'first') });
     throw new Error('Unexpected detail call');
@@ -124,10 +126,11 @@ test('scanner reports incomplete discovery instead of claiming full coverage', a
 
 test('scanner excludes events outside 12 hours before requesting market details', async () => {
   const originalFetch = globalThis.fetch;
+  const game = scoreboardGame('pre', 24);
   let detailCalls = 0;
   globalThis.fetch = async input => {
     const url = new URL(String(input));
-    if (url.hostname === 'site.api.espn.com') return Response.json({ events: [scoreboardGame('pre', 24)] });
+    if (url.hostname === 'site.api.espn.com') return Response.json({ events: [game] });
     if (url.pathname.endsWith('/series')) return Response.json({ series: [{ ticker: 'KXNBAGAME', category: 'Sports' }] });
     if (url.pathname.endsWith('/events')) return Response.json({ events: [{ event_ticker: 'KXNBAGAME-OUTSIDE', title: 'Boston at Philadelphia' }], cursor: '' });
     if (url.pathname.endsWith('/markets')) { detailCalls++; return Response.json({ markets: [] }); }
@@ -143,9 +146,10 @@ test('scanner excludes events outside 12 hours before requesting market details'
 
 test('scanner recognizes upcoming matchups by team city and never labels them LIVE', async () => {
   const originalFetch = globalThis.fetch;
+  const game = scoreboardGame('pre', 3);
   globalThis.fetch = async input => {
     const url = new URL(String(input));
-    if (url.hostname === 'site.api.espn.com') return Response.json({ events: [scoreboardGame('pre', 3)] });
+    if (url.hostname === 'site.api.espn.com') return Response.json({ events: [game] });
     if (url.pathname.endsWith('/series')) return Response.json({ series: [
       { ticker: 'KXNBAGAME', category: 'Sports' }, { ticker: 'KXNBAFINAL', category: 'Sports' }
     ] });
@@ -169,10 +173,11 @@ test('scanner recognizes upcoming matchups by team city and never labels them LI
 
 test('scanner excludes completed games and never requests their contract details', async () => {
   const originalFetch = globalThis.fetch;
+  const game = scoreboardGame('post', -2);
   let detailCalls = 0;
   globalThis.fetch = async input => {
     const url = new URL(String(input));
-    if (url.hostname === 'site.api.espn.com') return Response.json({ events: [scoreboardGame('post', -2)] });
+    if (url.hostname === 'site.api.espn.com') return Response.json({ events: [game] });
     if (url.pathname.endsWith('/series')) return Response.json({ series: [{ ticker: 'KXNBAGAME', category: 'Sports' }] });
     if (url.pathname.endsWith('/events')) return Response.json({ events: [
       { event_ticker: 'KXNBAGAME-FINAL', title: 'Boston at Philadelphia' }
