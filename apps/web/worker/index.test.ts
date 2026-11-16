@@ -83,7 +83,7 @@ const discovery = (start: string) => ({
 });
 
 test('scanner checks ESPN first and fetches quotes only for the exact matched event', async t => {
-  const game = scoreboardGame('in');
+  const game = { ...scoreboardGame('in'), id: '123' };
   const calls: URL[] = [];
   t.mock.method(globalThis, 'fetch', async (input: RequestInfo | URL) => {
     const url = new URL(String(input));
@@ -113,6 +113,7 @@ test('scanner checks ESPN first and fetches quotes only for the exact matched ev
   assert.equal(body.scheduledGames, 1);
   assert.equal(body.sportsEvents, 1);
   assert.equal(body.markets[0]?.eventTicker, eventTicker);
+  assert.equal(body.markets[0]?.espnGameId, '123');
   assert.equal(body.partialCoverage, false);
   assert.deepEqual(body.markets.map((m: any) => [m.ticker, m.side, m.askCents, m.gameStatus, m.gameStartAt]),
     [[market.ticker, 'YES', 58, 'live', game.date]]);
@@ -326,4 +327,60 @@ test('volleyball research reads completed team schedules and reports sets', asyn
   assert.equal(body.left.pointsFor, 3);
   assert.equal(body.right.pointsFor, 1);
   assert.equal(body.h2h.games, 1);
+});
+
+test('Analyze returns rankings, each team’s last five games, deduplicated head-to-head and known injuries', async t => {
+  const l = { id: '2', displayName: 'Boston Celtics' };
+  const r = { id: '20', displayName: 'Philadelphia 76ers' };
+  const other = { id: '3', displayName: 'Opponent' };
+  const daysAgo = (days: number) => new Date(Date.now() - days * 86400000).toISOString();
+  const event = (id: string, days: number, first: typeof l, second: typeof r) => ({
+    id, date: daysAgo(days), competitions: [{ status: { type: { completed: true } }, competitors: [
+      { team: first, score: { value: 104 } }, { team: second, score: '100' }
+    ] }]
+  });
+  const past = event('prior-game', 2, l, r);
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', async (input: RequestInfo | URL) => {
+    const url = new URL(String(input));
+    calls++;
+    if (url.pathname.endsWith('/summary')) {
+      assert.equal(url.searchParams.get('event'), '123');
+      return Response.json({
+        header: { season: { year: 2027 }, competitions: [{ date: daysAgo(-1), competitors: [{ team: l }, { team: r }] }] },
+        injuries: [{ team: l, injuries: [
+          { athlete: { displayName: 'Injured player' }, status: 'Out', details: { type: 'Knee' } },
+          { athlete: { displayName: 'Available player' }, status: 'Active' }
+        ] }]
+      });
+    }
+    if (url.pathname.endsWith('/standings')) return Response.json({
+      children: [{ name: 'Eastern Conference', standings: { entries: [{ team: l,
+        stats: [{ name: 'playoffSeed', value: 3 }, { name: 'wins', displayValue: '11' }, { name: 'losses', displayValue: '6' }]
+      }] } }]
+    });
+    assert.match(url.pathname, /\/teams\/(2|20)\/schedule$/);
+    const left = url.pathname.includes('/2/');
+    if (!left && url.searchParams.get('season') === '2026') return new Response(null, { status: 502 });
+    return Response.json({ events: [
+      past,
+      ...Array.from({ length: 6 }, (_, index) => event(String((left ? 100 : 200) + index), index + 3, left ? l : r, other)),
+      event('future-game', -1, l, r)
+    ] });
+  });
+
+  const invalid = await worker.fetch(request('/api/games/analyze?league=__proto__&game=123'), { ASSETS: assets });
+  assert.equal(invalid.status, 400);
+  assert.equal(calls, 0);
+  const response = await worker.fetch(request('/api/games/analyze?league=nba&game=123'), { ASSETS: assets });
+  assert.equal(response.status, 200);
+  const body = await response.json() as any;
+  assert.deepEqual(body.teams[0].standing, { rank: 3, group: 'Eastern Conference', record: '11–6' });
+  assert.deepEqual(body.teams.map((team: any) => team.recent.length), [5, 5]);
+  assert.equal(body.teams[0].recent[0].opponent, r.displayName);
+  assert.equal(body.teams[1].recent[0].result, 'L');
+  assert.deepEqual(body.headToHead.map((meeting: any) => meeting.scores), [[104, 100]]);
+  assert.deepEqual(body.teams[0].injuries.map((injury: any) => injury.player), ['Injured player']);
+  assert.equal(body.teams[1].injuries, null);
+  assert.equal(body.teams[1].historyPartial, true);
 });

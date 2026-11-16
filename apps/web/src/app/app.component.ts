@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { Component, computed, signal } from '@angular/core';
 import { BUILD_ID } from './build-info';
+import { MatchupAnalysisComponent } from './matchup-analysis.component';
 type ScanLeague = 'nba' | 'nfl' | 'nhl' | 'mlb' | 'wnba' | 'ncaaf' | 'ncaam' | 'ncaav';
 type Sport = ScanLeague | 'tennis-men' | 'tennis-women';
 interface LeagueOption { id: Sport; label: string; women?: boolean }
@@ -8,7 +9,7 @@ interface Team { id: number | string; full_name: string; abbreviation?: string }
 interface Stats { games: number; wins: number; losses: number; ties?: number; pointsFor: number | null; pointsAgainst: number | null; recent: { date: string; scored: number; allowed: number; win: boolean }[] }
 interface NhlXgTeam { abbreviation: string; games: number; xgShare: number; xgf60: number; xga60: number; xgd60: number; highDangerFor: number; highDangerAgainst: number }
 interface NhlXgComparison { source: string; fetchedAt: string; season: number; left: NhlXgTeam; right: NhlXgTeam; note: string; attribution: string }
-interface Market { eventTicker?: string; gameStatus?: 'live' | 'upcoming' | 'final'; gameStartAt?: string; ticker: string; event: string; title: string; side: 'YES' | 'NO'; askCents: number; yesBid: string | null; yesAsk: string | null; noAsk: string | null; last: string | null; volume24h: string | null }
+interface Market { eventTicker?: string; espnGameId?: string; gameStatus?: 'live' | 'upcoming' | 'final'; gameStartAt?: string; ticker: string; event: string; title: string; side: 'YES' | 'NO'; askCents: number; yesBid: string | null; yesAsk: string | null; noAsk: string | null; last: string | null; volume24h: string | null }
 interface ScanResult { source: string; scannedAt: string; markets: Market[]; partialCoverage: boolean; note: string; pagesScanned: number; sportsEvents: number; scheduledGames?: number }
 interface Comparison { source: string; fetchedAt: string; sample: number; left: Stats; right: Stats; partial: boolean; note: string; h2h?: { games: number; leftWins: number; rightWins: number; ties: number; meetings: { date: string; leftScore: number; rightScore: number }[] }; metricProfile?: { unit: string; available: string[]; unavailable: string[] } }
 const kalshiSeriesSlugs: Readonly<Record<string, string>> = {
@@ -22,7 +23,7 @@ const kalshiSeriesSlugs: Readonly<Record<string, string>> = {
 };
 
 @Component({
-  selector: 'osi-root', standalone: true, imports: [CommonModule],
+  selector: 'osi-root', standalone: true, imports: [CommonModule, MatchupAnalysisComponent],
   template: `
   <main class="workbench">
     <header><div class="eyebrow">OPEN SPORTS INTELLIGENCE</div><h1>Sports Research Workbench</h1></header>
@@ -101,7 +102,11 @@ const kalshiSeriesSlugs: Readonly<Record<string, string>> = {
           <p class="meta">{{ result.source }} · {{ result.scannedAt | date:'medium' }} · {{ result.markets.length }} matching offers · {{ result.sportsEvents }} matched games<span *ngIf="result.scheduledGames !== undefined"> of {{ result.scheduledGames }} on the ESPN schedule</span></p><p *ngIf="result.markets.length === 0" class="error">No matching contracts in the scanned portion. {{ result.partialCoverage ? 'Coverage is incomplete; this is NOT a full-book no-match result.' : 'Try widening the price range.' }}</p><p class="hint">{{ result.note }} <strong *ngIf="result.partialCoverage">Coverage is incomplete.</strong></p>
           <article *ngFor="let group of marketGroups()" class="stats market-result">
             <div class="market-result-heading">
-              <strong><span *ngIf="group.lead.gameStatus === 'live'" class="live-indicator" aria-label="Live game">LIVE</span>{{ group.lead.event }}</strong>
+              <div class="market-matchup">
+                <strong><span *ngIf="group.lead.gameStatus === 'live'" class="live-indicator" aria-label="Live game">LIVE</span>{{ group.lead.event }}</strong>
+                <button *ngIf="group.lead.espnGameId as gameId" class="analyze" type="button"
+                  [attr.aria-label]="'Analyze ' + group.lead.event" (click)="matchupAnalysis.open(scanLeague(), gameId, group.lead.event)">Analyze</button>
+              </div>
               <span class="market-percentage" [attr.aria-label]="'Ask price ' + group.askCents + ' cents'">{{ group.askCents }}¢</span>
             </div>
             <p *ngIf="group.lead.gameStartAt">{{ group.lead.gameStartAt | date:'short' }}</p>
@@ -116,6 +121,7 @@ const kalshiSeriesSlugs: Readonly<Record<string, string>> = {
         </ng-template>
       </ng-container>
     </section>
+    <osi-matchup-analysis #matchupAnalysis></osi-matchup-analysis>
     <footer class="build-footer" aria-label="Application build version">Build {{ buildId }}</footer>
   </main>`,
   styles: [`
@@ -158,6 +164,7 @@ const kalshiSeriesSlugs: Readonly<Record<string, string>> = {
     .market-offer{display:block;padding:10px 12px;background:#111d2d;border:1px solid #354359;border-radius:8px;color:inherit;text-decoration:none;overflow-wrap:anywhere}
     .market-offer:hover,.market-offer:focus-visible{border-color:#69d8d0;background:#20354a;outline-offset:2px}
     .market-offer .meta{display:block;margin-top:4px;color:#a9b7cc}
+    .market-matchup{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.market-matchup .analyze{padding:5px 10px;font-size:13px;border-color:#45757f}
     .market-result-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.market-percentage{font-size:clamp(24px,3vw,34px);line-height:1;font-weight:800;font-variant-numeric:tabular-nums;color:#85e6dc;white-space:nowrap}
     .stats p{font-size:14px;border-bottom:1px solid #29394e;padding-bottom:6px}@media(max-width:650px){.columns{grid-template-columns:1fr}}
   `]
