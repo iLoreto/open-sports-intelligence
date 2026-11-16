@@ -2,6 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import worker from './index.ts';
 
+const scoreboardGame = (state: 'in' | 'pre' | 'post', hoursFromNow = 2) => ({
+  date: new Date(Date.now() + hoursFromNow * 3600000).toISOString(),
+  status: { type: { state, completed: state === 'post' } },
+  competitions: [{ competitors: [
+    { team: { displayName: 'Boston Celtics', name: 'Celtics' } },
+    { team: { displayName: 'Philadelphia 76ers', name: '76ers' } }
+  ] }]
+});
+
 const assets = { fetch: async () => new Response('asset') };
 const request = (path: string, method = 'GET') => new Request('https://example.test' + path, { method });
 
@@ -68,6 +77,7 @@ test('scanner discovers league series, then fetches details only for discovered 
   globalThis.fetch = async input => {
     const url = new URL(String(input));
     calls.push(url);
+    if (url.hostname === 'site.api.espn.com') return Response.json({ events: [scoreboardGame('in')] });
     if (url.pathname.endsWith('/series')) return Response.json({ series: [
       { ticker: 'KXNBAGAME', title: 'NBA games', category: 'Sports' },
       { ticker: 'KXNFLGAME', title: 'NFL games', category: 'Sports' },
@@ -90,7 +100,8 @@ test('scanner discovers league series, then fetches details only for discovered 
     const body = await response.json() as any;
     assert.deepEqual(body.markets.map((m: any) => [m.side, m.askCents]), [['YES', 58]]);
     assert.equal(body.partialCoverage, false);
-    assert.equal(calls.length, 3);
+    assert.equal(calls.length, 6);
+    assert.equal(body.markets[0].gameStatus, 'live');
     assert.ok(calls.every(url => !url.pathname.endsWith('/markets') || url.searchParams.has('event_ticker')));
   } finally { globalThis.fetch = originalFetch; }
 });
@@ -99,6 +110,7 @@ test('scanner reports incomplete discovery instead of claiming full coverage', a
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async input => {
     const url = new URL(String(input));
+    if (url.hostname === 'site.api.espn.com') return Response.json({ events: [scoreboardGame('pre')] });
     if (url.pathname.endsWith('/series')) return Response.json({ series: [{ ticker: 'KXNBAGAME', category: 'Sports' }] });
     if (url.pathname.endsWith('/events')) return Response.json({ events: [], cursor: 'more-' + (url.searchParams.get('cursor') || 'first') });
     throw new Error('Unexpected detail call');
@@ -107,5 +119,24 @@ test('scanner reports incomplete discovery instead of claiming full coverage', a
     const response = await worker.fetch(request('/api/markets/scan?provider=kalshi&league=nba&min=1&max=99', 'POST'), { ASSETS: assets });
     assert.equal(response.status, 200);
     assert.equal((await response.json() as any).partialCoverage, true);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test('scanner excludes events outside 12 hours before requesting market details', async () => {
+  const originalFetch = globalThis.fetch;
+  let detailCalls = 0;
+  globalThis.fetch = async input => {
+    const url = new URL(String(input));
+    if (url.hostname === 'site.api.espn.com') return Response.json({ events: [scoreboardGame('pre', 24)] });
+    if (url.pathname.endsWith('/series')) return Response.json({ series: [{ ticker: 'KXNBAGAME', category: 'Sports' }] });
+    if (url.pathname.endsWith('/events')) return Response.json({ events: [{ event_ticker: 'KXNBAGAME-OUTSIDE', title: 'Boston at Philadelphia' }], cursor: '' });
+    if (url.pathname.endsWith('/markets')) { detailCalls++; return Response.json({ markets: [] }); }
+    throw new Error('Unexpected request: ' + url);
+  };
+  try {
+    const response = await worker.fetch(request('/api/markets/scan?provider=kalshi&league=nba&min=1&max=99', 'POST'), { ASSETS: assets });
+    assert.equal(response.status, 200);
+    assert.equal((await response.json() as any).markets.length, 0);
+    assert.equal(detailCalls, 0);
   } finally { globalThis.fetch = originalFetch; }
 });
