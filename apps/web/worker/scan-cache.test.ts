@@ -3,22 +3,28 @@ import assert from 'node:assert/strict';
 import { sharedScan, SNAPSHOT_TTL_MS, type ScanSnapshot, type ScanDatabase } from './scan-cache.ts';
 
 function fakeDb(onClaim?: () => Promise<void>) {
-  let row: Record<string, any> | null = null;
+  const rows = new Map<unknown, Record<string, any>>();
   const db: ScanDatabase = { prepare(sql) {
     const values: unknown[] = [];
     const stmt = {
       bind(...args: unknown[]) { values.push(...args); return stmt; },
-      async first() { return row ? { ...row } : null; },
+      async first() {
+        const row = rows.get(values[0]);
+        return row ? { ...row } : null;
+      },
       async run() {
         if (sql.startsWith('INSERT')) {
           if (onClaim) await onClaim();
+          const row = rows.get(values[0]);
           if (row && ((row.lease_until != null && row.lease_until > Number(values[3])) ||
             (row.expires_at != null && row.expires_at > Number(values[4])))) return { meta: { changes: 0 } };
-          row = { ...row, lease_token: values[1], lease_until: values[2] };
+          rows.set(values[0], { ...row, lease_token: values[1], lease_until: values[2] });
           return { meta: { changes: 1 } };
         }
-        if (!row || row.lease_token !== values[sql.includes('SET snapshot') ? 4 : values.length - 1]) return { meta: { changes: 0 } };
-        if (sql.includes('SET snapshot')) {
+        const writesSnapshot = sql.includes('SET snapshot');
+        const row = rows.get(values[writesSnapshot ? 3 : 0]);
+        if (!row || row.lease_token !== values[writesSnapshot ? 4 : 1]) return { meta: { changes: 0 } };
+        if (writesSnapshot) {
           if (row.lease_until <= Number(values[5])) return { meta: { changes: 0 } };
           Object.assign(row, { snapshot: values[0], captured_at: values[1], expires_at: values[2], lease_token: null, lease_until: null });
         } else Object.assign(row, { lease_token: null, lease_until: null });
@@ -37,19 +43,60 @@ const snapshot = (): ScanSnapshot => ({
   markets: [55, 68].map((askCents, i) => ({ ticker: String(i), event: 'game', title: 'test',
     side: 'YES' as const, askCents, yesBid: null, yesAsk: null, noAsk: null, last: null, volume24h: null }))
 });
-test('shared snapshot filters distinct ranges and expires after 60 seconds', async () => {
-  const db = fakeDb(); let calls = 0;
+test('shared snapshot serves a wider range in the same league until ten minutes elapse', async () => {
+  const db = fakeDb();
+  let currentTime = clock;
+  const options = { now: () => currentTime, scope: 'nba' };
+  let calls = 0;
   const fetcher = async () => { calls++; return snapshot(); };
-  const a = await sharedScan(db, 55, 65, fetcher, { now: () => clock });
-  const b = await sharedScan(db, 60, 70, fetcher, { now: () => clock });
-  assert.equal(a.cache.status, 'miss'); assert.equal(b.cache.status, 'hit');
-  assert.deepEqual(a.markets.map(m => m.askCents), [55]);
-  assert.deepEqual(b.markets.map(m => m.askCents), [68]);
+  const first = await sharedScan(db, 55, 65, fetcher, options);
+  currentTime += 10 * 60_000 - 1;
+  const wider = await sharedScan(db, 55, 70, fetcher, options);
+  assert.equal(first.cache.status, 'miss');
+  assert.equal(wider.cache.status, 'hit');
+  assert.equal(wider.cache.ttlSeconds, 600);
+  assert.equal(wider.cache.ageSeconds, 599);
+  assert.deepEqual(first.markets.map(m => m.askCents), [55]);
+  assert.deepEqual(wider.markets.map(m => m.askCents), [55, 68]);
   assert.equal(calls, 1);
-  clock += SNAPSHOT_TTL_MS + 1;
-  const c = await sharedScan(db, 55, 70, fetcher, { now: () => clock });
-  assert.equal(c.cache.status, 'miss'); assert.equal(calls, 2);
+
+  currentTime += 1;
+  const refreshed = await sharedScan(db, 55, 70, fetcher, options);
+  assert.equal(refreshed.cache.status, 'miss');
+  assert.equal(calls, 2);
 });
+
+test('different leagues keep separate snapshots for overlapping price ranges', async () => {
+  const db = fakeDb();
+  const scan = (scope: string, event: string) => sharedScan(db, 55, 70, async () => {
+    const full = snapshot();
+    return { ...full, markets: full.markets.map(market => ({ ...market, event })) };
+  }, { now: () => clock, scope });
+  const nba = await scan('nba', 'NBA game');
+  const nhl = await scan('nhl', 'NHL game');
+  const nbaAgain = await scan('nba', 'Another NBA game');
+  assert.equal(nba.cache.status, 'miss');
+  assert.equal(nhl.cache.status, 'miss');
+  assert.equal(nhl.markets[0]?.event, 'NHL game');
+  assert.equal(nbaAgain.cache.status, 'hit');
+  assert.equal(nbaAgain.markets[0]?.event, 'NBA game');
+});
+
+test('incomplete scans are only reused for a minute', async () => {
+  const db = fakeDb();
+  let currentTime = clock;
+  const options = { now: () => currentTime, scope: 'nba' };
+  const incomplete = await sharedScan(db, 55, 70, async () => ({
+    ...snapshot(), partialCoverage: true, rateLimited: true
+  }), options);
+  assert.equal(incomplete.cache.ttlSeconds, 60);
+  currentTime += 60_000;
+  const complete = await sharedScan(db, 55, 70, async () => snapshot(), options);
+  assert.equal(complete.cache.status, 'miss');
+  assert.equal(complete.cache.ttlSeconds, SNAPSHOT_TTL_MS / 1000);
+  assert.equal(complete.partialCoverage, false);
+});
+
 test('simultaneous callers share one upstream fetch', async () => {
   const db = fakeDb(); let calls = 0; let finish!: (s: ScanSnapshot) => void;
   const fetcher = () => { calls++; return new Promise<ScanSnapshot>(resolve => { finish = resolve; }); };
