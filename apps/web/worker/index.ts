@@ -6,13 +6,34 @@ type Team = { id: number; full_name: string };
 type Game = { id: number; date: string; status: string; home_team: Team; visitor_team: Team; home_team_score: number; visitor_team_score: number };
 const NBA_TEAMS: Team[] = [{"id":1,"full_name":"Atlanta Hawks"},{"id":2,"full_name":"Boston Celtics"},{"id":3,"full_name":"Brooklyn Nets"},{"id":4,"full_name":"Charlotte Hornets"},{"id":5,"full_name":"Chicago Bulls"},{"id":6,"full_name":"Cleveland Cavaliers"},{"id":7,"full_name":"Dallas Mavericks"},{"id":8,"full_name":"Denver Nuggets"},{"id":9,"full_name":"Detroit Pistons"},{"id":10,"full_name":"Golden State Warriors"},{"id":11,"full_name":"Houston Rockets"},{"id":12,"full_name":"Indiana Pacers"},{"id":13,"full_name":"LA Clippers"},{"id":14,"full_name":"Los Angeles Lakers"},{"id":15,"full_name":"Memphis Grizzlies"},{"id":16,"full_name":"Miami Heat"},{"id":17,"full_name":"Milwaukee Bucks"},{"id":18,"full_name":"Minnesota Timberwolves"},{"id":19,"full_name":"New Orleans Pelicans"},{"id":20,"full_name":"New York Knicks"},{"id":21,"full_name":"Oklahoma City Thunder"},{"id":22,"full_name":"Orlando Magic"},{"id":23,"full_name":"Philadelphia 76ers"},{"id":24,"full_name":"Phoenix Suns"},{"id":25,"full_name":"Portland Trail Blazers"},{"id":26,"full_name":"Sacramento Kings"},{"id":27,"full_name":"San Antonio Spurs"},{"id":28,"full_name":"Toronto Raptors"},{"id":29,"full_name":"Utah Jazz"},{"id":30,"full_name":"Washington Wizards"}];
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
+class KalshiRateLimitError extends Error {
+  retryAfterSeconds: number;
+
+  constructor(retryAfter: string | null) {
+    super('Kalshi is temporarily rate limiting scans. Please retry shortly.');
+    const seconds = retryAfter && /^\d+$/.test(retryAfter)
+      ? Number(retryAfter)
+      : Math.ceil((Date.parse(retryAfter ?? '') - Date.now()) / 1000);
+    this.retryAfterSeconds = Number.isFinite(seconds) ? Math.max(0, seconds) : 1;
+  }
+}
 function validDate(value: string): boolean { return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value)); }
+type EspnScore = string | number | { value?: number | string; displayValue?: string };
+const scoreValue = (score: EspnScore | undefined): number => {
+  if (typeof score === 'number') return score;
+  if (typeof score === 'string') return Number(score);
+  if (score && typeof score === 'object') {
+    if (typeof score.value === 'number') return score.value;
+    if (typeof score.value === 'string') return Number(score.value);
+    if (typeof score.displayValue === 'string') return Number(score.displayValue);
+  }
+  return Number.NaN;
+};
 const NBA_ABBREVIATIONS = ['ATL','BOS','BKN','CHA','CHI','CLE','DAL','DEN','DET','GS','HOU','IND','LAC','LAL','MEM','MIA','MIL','MIN','NO','NY','OKC','ORL','PHI','PHX','POR','SAC','SA','TOR','UTAH','WSH'];
 async function espnComparison(left: number, right: number, sample: number) {
   // ESPN scoreboard rejects large date-range requests (HTTP 400). Query each
   // selected team's season schedule instead, using ESPN's own NBA team IDs.
   const currentYear = new Date().getUTCFullYear();
-  type EspnScore = string | number | { value?: number | string; displayValue?: string };
   type EspnCompetitor = { homeAway?: string; score?: EspnScore; team?: { id?: string; abbreviation?: string } };
   type EspnEvent = { id?: string; date?: string; status?: { type?: { completed?: boolean } }; competitions?: { status?: { type?: { completed?: boolean } }; competitors?: EspnCompetitor[] }[] };
   const appTeamToEspnPath = (id: number): string | null => {
@@ -35,16 +56,6 @@ async function espnComparison(left: number, right: number, sample: number) {
   // Normalize ESPN abbreviations to the app's stable NBA team IDs.
   ids.set('GSW', 10); ids.set('NOP', 19); ids.set('NYK', 20); ids.set('OKC', 21);
   ids.set('SAS', 27); ids.set('UTA', 29); ids.set('WAS', 30);
-  const scoreValue = (score: EspnScore | undefined): number => {
-    if (typeof score === 'number') return score;
-    if (typeof score === 'string') return Number(score);
-    if (score && typeof score === 'object') {
-      if (typeof score.value === 'number') return score.value;
-      if (typeof score.value === 'string') return Number(score.value);
-      if (typeof score.displayValue === 'string') return Number(score.displayValue);
-    }
-    return Number.NaN;
-  };
   const games = new Map<string, Game>();
   for (const page of pages) for (const event of page.events || []) {
     const completed = event.status?.type?.completed ?? event.competitions?.[0]?.status?.type?.completed;
@@ -149,12 +160,13 @@ export default {
       const max = Number(url.searchParams.get('max') ?? '70');
       if (!Number.isInteger(min) || !Number.isInteger(max) || min < 1 || max > 99 || min > max)
         return json({ error: 'Specify a valid price range from 1 to 99 cents, minimum not exceeding maximum.' }, 400);
-      const scanLeagues = ['nba', 'nfl', 'nhl', 'mlb', 'wnba', 'ncaaf', 'ncaam'] as const;
+      const scanLeagues = ['nba', 'nfl', 'nhl', 'mlb', 'wnba', 'ncaaf', 'ncaam', 'ncaav'] as const;
       type ScanLeague = (typeof scanLeagues)[number];
       const selectedLeague = ((url.searchParams.get('league') || 'nba').toLowerCase()) as ScanLeague;
       if (!scanLeagues.includes(selectedLeague)) return json({ error: 'Unsupported league filter' }, 400);
       const inferLeague = (event: string, title: string, ticker: string): ScanLeague | null => {
         const text = (event + ' ' + title + ' ' + ticker).toLowerCase();
+        if (/kxncaawv/.test(text)) return 'ncaav';
         if (/kxwnba|\bwnba\b/.test(text)) return 'wnba';
         if (/kxncaaf|\bncaaf\b|college football/.test(text)) return 'ncaaf';
         if (/kxncaam|\bncaam\b|mens college basketball|men\'s college basketball|ncaa basketball|college basketball/.test(text)) return 'ncaam';
@@ -172,52 +184,56 @@ export default {
         const endpoint = 'https://external-api.kalshi.com/trade-api/v2';
         type Quote = { ticker?: string; title?: string; status?: string; yes_bid_dollars?: string; yes_ask_dollars?: string; no_ask_dollars?: string; last_price_dollars?: string; volume_24h_fp?: string };
         type Event = { event_ticker?: string; series_ticker?: string; title?: string; category?: string; markets?: Quote[] };
-        type Series = { ticker: string; title?: string; category?: string; tags?: string[] };
         const markets: ScanSnapshot['markets'] = [];
         let pagesScanned = 0; let sportsEvents = 0; let nestedMarkets = 0; let quotedMarkets = 0;
         let rateLimited = false; let incomplete = false;
-        const sports: Event[] = [];
+        const sports: { event: Event; game: ScoreGame }[] = [];
+        let marketPagesScanned = 0;
+        let retriedRateLimit = false;
         const fetchJson = async <T>(path: string): Promise<T> => {
-          const response = await fetch(endpoint + path, {
+          const fetchPage = () => fetch(endpoint + path, {
             headers: { Accept: 'application/json' },
             signal: AbortSignal.any([scanSignal, AbortSignal.timeout(13000)])
           });
-          if (response.status === 429) { rateLimited = true; throw new Error('Kalshi rate limit reached (429)'); }
+          let response = await fetchPage();
+          if (response.status === 429) {
+            const error = new KalshiRateLimitError(response.headers.get('Retry-After'));
+            await response.body?.cancel();
+            // Give transient throttling one retry within the manual scan's time budget.
+            if (retriedRateLimit || error.retryAfterSeconds > 2) throw error;
+            retriedRateLimit = true;
+            await new Promise<void>(resolve => setTimeout(resolve, error.retryAfterSeconds * 1000));
+            scanSignal.throwIfAborted();
+            response = await fetchPage();
+            if (response.status === 429) {
+              await response.body?.cancel();
+              throw new KalshiRateLimitError(response.headers.get('Retry-After'));
+            }
+          }
           if (!response.ok) throw new Error('Kalshi HTTP ' + response.status);
           return response.json() as Promise<T>;
         };
-        // Discover series IDs first. Never page through the global /markets firehose.
-        const catalog = await fetchJson<{ series?: Series[] }>('/series?category=Sports');
-        if (!Array.isArray(catalog.series)) throw new Error('Unexpected Kalshi series response');
-        const leaguePatterns: Record<ScanLeague, RegExp> = {
-          nba: /(?:^|\W)nba(?:$|\W)|kxnba|pro basketball/i,
-          nfl: /(?:^|\W)nfl(?:$|\W)|kxnfl|pro football/i,
-          nhl: /(?:^|\W)nhl(?:$|\W)|kxnhl|pro hockey/i,
-          mlb: /(?:^|\W)mlb(?:$|\W)|kxmlb|major league baseball/i,
-          wnba: /(?:^|\W)wnba(?:$|\W)|kxwnba/i,
-          ncaaf: /ncaaf|college football/i,
-          ncaam: /ncaam|college basketball|men.s college basketball/i
-        };
-        const selectedSeries = catalog.series.filter(series =>
-          series.category?.toLowerCase() === 'sports' &&
-          leaguePatterns[selectedLeague].test([series.ticker, series.title, ...(series.tags || [])].join(' ')) &&
-          /(?:GAME|MATCH|MONEYLINE|ML)/i.test(series.ticker) &&
-          !/(?:FUTURE|CHAMP|SEASON|PROP|TOTAL|SPREAD)/i.test(series.ticker));
         // Use the authoritative scoreboard to limit discovery to the next 12 hours,
         // while retaining games already in progress. Never infer LIVE from kickoff alone.
-        type ScoreTeam = { team?: { displayName?: string; shortDisplayName?: string; name?: string; abbreviation?: string } };
-        type ScoreGame = { date?: string; status?: { type?: { state?: string; completed?: boolean } }; competitions?: { competitors?: ScoreTeam[] }[] };
+        type ScoreTeam = { team?: { displayName?: string; shortDisplayName?: string; name?: string; abbreviation?: string; location?: string } };
+        type ScoreGame = { id?: string; date?: string; status?: { type?: { state?: string; completed?: boolean } }; competitions?: { competitors?: ScoreTeam[] }[] };
         const espnPaths: Record<ScanLeague, string> = {
           nba: 'basketball/nba', nfl: 'football/nfl', nhl: 'hockey/nhl',
           mlb: 'baseball/mlb', wnba: 'basketball/wnba',
-          ncaaf: 'football/college-football', ncaam: 'basketball/mens-college-basketball'
+          ncaaf: 'football/college-football', ncaam: 'basketball/mens-college-basketball',
+          ncaav: 'volleyball/womens-college-volleyball'
+        };
+        const gameSeries: Record<ScanLeague, string> = {
+          nba: 'KXNBAGAME', nfl: 'KXNFLGAME', nhl: 'KXNHLGAME', mlb: 'KXMLBGAME',
+          wnba: 'KXWNBAGAME', ncaaf: 'KXNCAAFGAME', ncaam: 'KXNCAAMBGAME', ncaav: 'KXNCAAWVMATCH'
         };
         const nowMs = Date.now();
         const twelveHours = 12 * 60 * 60 * 1000;
         const day = (offset: number) => new Date(nowMs + offset * 86400000).toISOString().slice(0, 10).replace(/-/g, '');
         const scoreboard = await Promise.all([-1, 0, 1].map(async offset => {
           const response = await fetch('https://site.api.espn.com/apis/site/v2/sports/' +
-            espnPaths[selectedLeague] + '/scoreboard?dates=' + day(offset) + '&limit=200', {
+            espnPaths[selectedLeague] + '/scoreboard?dates=' + day(offset) + '&limit=200' +
+              (selectedLeague === 'ncaam' ? '&groups=50' : selectedLeague === 'ncaaf' ? '&groups=80' : ''), {
               headers: { Accept: 'application/json' },
               signal: AbortSignal.any([scanSignal, AbortSignal.timeout(13000)])
             });
@@ -226,94 +242,99 @@ export default {
           if (!Array.isArray(payload.events)) throw new Error('Unexpected ESPN scoreboard response');
           return payload.events;
         }));
-        const eligibleGames = scoreboard.flat().filter(game => {
-          const state = game.status?.type?.state;
-          if (game.status?.type?.completed || state === 'post') return false;
-          if (state === 'in') return true;
+        const normalize = (value: string) => value.toLowerCase().trim()
+          .replace(/\bst\.?$/, 'state').replace(/^st\.?\s+/, 'saint ')
+          .replace(/\bse\s+/, 'southeastern ').replace(/[^a-z0-9]/g, '');
+        const gameKey = (game: ScoreGame) => game.id || (game.date || '') + ':' +
+          (game.competitions?.[0]?.competitors || []).map(({ team }) => normalize(team?.displayName || '')).sort().join(':');
+        const eligibleGames = new Map<string, ScoreGame>();
+        for (const game of scoreboard.flat()) {
           const start = Date.parse(game.date || '');
-          return state === 'pre' && Number.isFinite(start) && start >= nowMs && start <= nowMs + twelveHours;
-        });
-        const normalize = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, '');
-        const gameMatch = (eventTitle: string): ScoreGame | undefined => {
-          // A matchup must explicitly name both opponents; ambiguous aliases are not sufficient.
-          if (!/\b(?:at|vs|versus|v)\b|@/i.test(eventTitle)) return undefined;
-          const title = normalize(eventTitle);
-          const matches = eligibleGames.filter(game => {
-            const teams = game.competitions?.[0]?.competitors || [];
-            if (teams.length !== 2) return false;
-            return teams.every(({ team }) => {
-              const full = team?.displayName || '';
-              const city = full.split(' ').slice(0, -1).join(' ');
-              const aliases = [full, city, team?.name || '', team?.shortDisplayName || '']
-                .filter((alias): alias is string => alias.length >= 4);
-              return aliases.some(alias => title.includes(normalize(alias)));
-            });
-          });
-          // ESPN date windows overlap; the same fixture can appear in multiple responses.
-          // Collapse repeated scoreboard records before assessing ambiguity.
-          const unique = new Map<string, ScoreGame>();
-          for (const game of matches) {
-            const teams = game.competitions?.[0]?.competitors || [];
-            const key = (game.date || '') + ':' +
-              teams.map(({ team }) => normalize(team?.displayName || team?.name || '')).sort().join(':');
-            unique.set(key, game);
+          const state = game.status?.type?.state;
+          if (!Number.isFinite(start) || game.status?.type?.completed) continue;
+          if (state === 'in' || (state === 'pre' && start >= nowMs && start <= nowMs + twelveHours)) {
+            eligibleGames.set(gameKey(game), game);
           }
-          return unique.size === 1 ? [...unique.values()][0] : undefined;
+        }
+        type Milestone = { start_date?: string; primary_event_tickers?: string[] };
+        type EventPage = { events?: Event[]; milestones?: Milestone[]; cursor?: string };
+        const matchesTeam = (name: string, { team }: ScoreTeam): boolean => {
+          const full = team?.displayName || '';
+          const city = full.split(' ').slice(0, -1).join(' ');
+          return [full, city, team?.location, team?.name, team?.shortDisplayName, team?.abbreviation]
+            .some(alias => alias && (normalize(alias) === name || (alias.length >= 4 && name.includes(normalize(alias)))));
         };
-        const gameStatus = new Map<string, 'live' | 'upcoming'>();
-        const eventIds = new Map<string, Event>();
-        // Bound upstream work explicitly; incomplete scans must not masquerade as full coverage.
-        const MAX_SERIES = 80;
-        const MAX_EVENT_PAGES = 4;
-        if (selectedSeries.length > MAX_SERIES) incomplete = true;
-        for (const series of selectedSeries.slice(0, MAX_SERIES)) {
-          let cursor = '';
-          for (let pageNumber = 0; pageNumber < MAX_EVENT_PAGES; pageNumber++) {
-            const query = new URLSearchParams({ status: 'open', limit: '200', series_ticker: series.ticker });
-            if (cursor) query.set('cursor', cursor);
-            const page = await fetchJson<{ events?: Event[]; cursor?: string }>('/events?' + query);
+        const seriesTicker = gameSeries[selectedLeague];
+        const matchups = new Map<string, Map<string, ScoreGame>>();
+        if (eligibleGames.size > 0) {
+          // Resolve IDs from the league's game series. The discovery response carries no quotes.
+          const query = new URLSearchParams({
+            series_ticker: seriesTicker, status: 'open', limit: '200', with_milestones: 'true',
+            min_close_ts: String(Math.floor((nowMs - 86400000) / 1000))
+          });
+          for (let pageNumber = 0; pageNumber < 4; pageNumber++) {
+            const page = await fetchJson<EventPage>('/events?' + query);
             if (!Array.isArray(page.events)) throw new Error('Unexpected Kalshi events response');
             pagesScanned++;
-            for (const event of page.events) {
-              if (!event.event_ticker) continue;
-              const game = gameMatch(event.title || '');
-              if (!game) continue;
-              eventIds.set(event.event_ticker, event);
-              gameStatus.set(event.event_ticker, game.status?.type?.state === 'in' ? 'live' : 'upcoming');
+            const starts = new Map<string, number>();
+            for (const milestone of page.milestones ?? []) {
+              const start = Date.parse(milestone.start_date || '');
+              if (!Number.isFinite(start)) continue;
+              for (const ticker of milestone.primary_event_tickers ?? []) starts.set(ticker, start);
             }
-            const next = page.cursor || '';
-            if (!next) { cursor = ''; break; }
-            if (next === cursor) throw new Error('Kalshi event pagination cursor repeated');
-            cursor = next;
-            if (pageNumber === MAX_EVENT_PAGES - 1) incomplete = true;
+            for (const event of page.events) {
+              const ticker = event.event_ticker;
+              if (!ticker?.startsWith(seriesTicker + '-')) continue;
+              const start = starts.get(ticker);
+              const sides = (event.title || '').split(/\s+(?:at|vs\.?|versus|v)\s+|\s*@\s*/i).map(normalize);
+              if (start === undefined || sides.length !== 2 || sides.some(side => !side)) continue;
+              const matches = [...eligibleGames.values()].filter(game => {
+                const teams = game.competitions?.[0]?.competitors || [];
+                if (teams.length !== 2 || Math.abs(start - Date.parse(game.date || '')) > 90 * 60_000) return false;
+                return (matchesTeam(sides[0], teams[0]) && matchesTeam(sides[1], teams[1])) ||
+                  (matchesTeam(sides[0], teams[1]) && matchesTeam(sides[1], teams[0]));
+              });
+              if (matches.length !== 1) continue;
+              const game = matches[0];
+              const key = gameKey(game);
+              const candidates = matchups.get(key) ?? new Map<string, ScoreGame>();
+              candidates.set(ticker, game);
+              matchups.set(key, candidates);
+            }
+            if (!page.cursor) break;
+            if (page.cursor === query.get('cursor')) throw new Error('Kalshi event pagination cursor repeated');
+            query.set('cursor', page.cursor);
+            if (pageNumber === 3) incomplete = true;
           }
         }
-        // Stage two: query details by discovered event ID, never by global market page.
-        const MAX_EVENTS = 300;
-        if (eventIds.size > MAX_EVENTS) incomplete = true;
-        for (const event of [...eventIds.values()].slice(0, MAX_EVENTS)) {
-          const query = new URLSearchParams({ status: 'open', event_ticker: event.event_ticker!, limit: '1000' });
-          let cursor = '';
-          const quotes: Quote[] = [];
-          for (let pageNumber = 0; pageNumber < 3; pageNumber++) {
-            if (cursor) query.set('cursor', cursor);
-            const page = await fetchJson<{ markets?: Quote[]; cursor?: string }>('/markets?' + query);
-            if (!Array.isArray(page.markets)) throw new Error('Unexpected Kalshi market detail response');
-            quotes.push(...page.markets);
-            const next = page.cursor || '';
-            if (!next) { cursor = ''; break; }
-            if (next === cursor) throw new Error('Kalshi market pagination cursor repeated');
-            cursor = next;
-            if (pageNumber === 2) incomplete = true;
-          }
-          sports.push({ ...event, markets: quotes });
-          sportsEvents++;
-          nestedMarkets += quotes.length;
+        const targets = new Map<string, ScoreGame>();
+        for (const candidates of matchups.values()) {
+          if (candidates.size !== 1) continue;
+          for (const [ticker, game] of candidates) targets.set(ticker, game);
         }
-        const results: (Quote & { event_ticker?: string })[][] = [];
-        const marketPagesScanned = 0;
-        const marketCursor = incomplete ? 'partial' : '';
-        const eventTitles = new Map(sports.map(e => [e.event_ticker!, e.title || e.event_ticker!]));
+        const tickers = [...targets.keys()];
+        if (tickers.length !== eligibleGames.size) incomplete = true;
+        // Include quotes only for exact event IDs on the ESPN slate.
+        for (let offset = 0; offset < tickers.length; offset += 20) {
+          const batch = new Set(tickers.slice(offset, offset + 20));
+          const query = new URLSearchParams({ tickers: [...batch].join(','), with_nested_markets: 'true', limit: '200' });
+          const page = await fetchJson<EventPage>('/events?' + query).catch(error => {
+            if (!(error instanceof KalshiRateLimitError) || nestedMarkets === 0) throw error;
+            rateLimited = true;
+            return null;
+          });
+          if (!page) break;
+          if (!Array.isArray(page.events)) throw new Error('Unexpected Kalshi quote response');
+          marketPagesScanned++;
+          for (const event of page.events) {
+            const ticker = event.event_ticker;
+            if (!ticker || !batch.delete(ticker) || !Array.isArray(event.markets)) continue;
+            sports.push({ event, game: targets.get(ticker)! });
+            sportsEvents++;
+            nestedMarkets += event.markets.length;
+          }
+          if (page.cursor || batch.size > 0) incomplete = true;
+        }
         const seen = new Set<string>();
         const isPlainTeamSide = (title: string): boolean => {
           const titleText = title.toLowerCase().trim();
@@ -345,7 +366,7 @@ export default {
           const explicitMl = /(?:^|[-_])ml(?:$|[-_])/i.test(ticker);
           return (gameContext && isPlainTeamSide(titleText)) || explicitMl;
         };
-        const addMarket = (market: Quote & { event_ticker?: string }, event: string, status: 'live' | 'upcoming', mode: 'strict' | 'fallback' = 'strict') => {
+        const addMarket = (market: Quote, event: string, game: ScoreGame, mode: 'strict' | 'fallback' = 'strict') => {
           if (!market.ticker || (market.status && !['open', 'active'].includes(market.status))) return;
           const title = market.title || market.ticker;
           if (mode === 'strict' ? !isMoneylineMarket(event, title, market.ticker) : !isLeagueOutcomeContract(event, title, market.ticker)) return;
@@ -356,79 +377,94 @@ export default {
             if (typeof ask !== 'string' || !/^\d+(?:\.\d+)?$/.test(ask)) continue;
             quotedMarkets++;
             const cents = Math.round(Number(ask) * 100);
-            markets.push({ ticker: market.ticker, event, gameStatus: status,
+            markets.push({ ticker: market.ticker, event, gameStartAt: game.date,
+              gameStatus: game.status?.type?.state === 'in' ? 'live' : 'upcoming',
               title, side, askCents: cents,
               yesBid: market.yes_bid_dollars ?? null, yesAsk: market.yes_ask_dollars ?? null,
               noAsk: market.no_ask_dollars ?? null, last: market.last_price_dollars ?? null,
               volume24h: market.volume_24h_fp ?? null });
           }
         };
-        const allSources: { market: Quote & { event_ticker?: string }; event: string; status: 'live' | 'upcoming' }[] = [];
-        for (const market of results.flat()) {
-          if (!market.event_ticker) continue;
-          allSources.push({ market, event: eventTitles.get(market.event_ticker) || market.event_ticker, status: gameStatus.get(market.event_ticker) || 'upcoming' });
-        }
-        for (const event of sports) {
-          if (!event.event_ticker) continue;
-          for (const market of event.markets || []) {
-            allSources.push({ market, event: event.title || event.event_ticker, status: gameStatus.get(event.event_ticker) || 'upcoming' });
+        for (const mode of ['strict', 'fallback'] as const) {
+          for (const { event, game } of sports) {
+            for (const market of event.markets ?? []) addMarket(market, event.title || event.event_ticker!, game, mode);
           }
         }
-        // Include qualifying team-outcome contracts for every league, not only when
-        // the entire multi-league scan has zero strict matches. Deduplication keeps
-        // a market found by both passes from appearing twice.
-        for (const source of allSources) addMarket(source.market, source.event, source.status, 'strict');
-        for (const source of allSources) addMarket(source.market, source.event, source.status, 'fallback');
         scanSignal.throwIfAborted();
         markets.sort((a, b) => a.askCents - b.askCents || a.event.localeCompare(b.event));
-        const modeNote = markets.length ? 'Results include game moneyline and plain team-outcome contracts, deduplicated across both matching rules.' : 'No eligible game contracts found in the scanned portion of the feed.';
+        const modeNote = rateLimited ? 'Kalshi rate limited the scan. Only quotes fetched before the limit are included.' :
+          eligibleGames.size === 0 ? 'ESPN lists no live games or games starting in the next 12 hours.' :
+          'Kalshi quotes were requested only for matched ESPN games.';
         return { source: 'Kalshi public API', provider, scannedAt: new Date().toISOString(),
-          sportsEvents, pagesScanned, nestedMarkets, quotedMarkets, fetchedMarkets: results.reduce((n, group) => n + group.length, 0), marketPagesScanned, rateLimited, markets, partialCoverage: Boolean(incomplete || rateLimited),
-          note: 'Sports-only, on-demand scan. ' + modeNote + ' Quotes are displayed by contract side (YES/NO) at the current ask. Discovery uses league-specific series and event IDs; coverage limits are reported. Coverage is partial when additional pages exist or rate limiting occurs.' };
+          scheduledGames: eligibleGames.size, sportsEvents, pagesScanned, nestedMarkets, quotedMarkets,
+          fetchedMarkets: nestedMarkets, marketPagesScanned, rateLimited, markets, partialCoverage: incomplete || rateLimited,
+          note: modeNote };
         };
         const result = env.DB
           ? await sharedScan(env.DB, min, max, fetchSnapshot, { scope: selectedLeague })
           : uncachedScan(await fetchSnapshot(request.signal), min, max);
         const leagueFiltered = result.markets.filter((market) => inferLeague(market.event, market.title, market.ticker) === selectedLeague);
         return json({ ...result, markets: leagueFiltered, note: result.note + ' League filter: ' + leagueLabel(selectedLeague) + '.' });
-      } catch (e) { return json({ error: e instanceof Error ? e.message : 'Kalshi feed unavailable' }, 502); }
+      } catch (e) {
+        if (e instanceof KalshiRateLimitError) {
+          const response = json({ error: e.message, rateLimited: true }, 503);
+          response.headers.set('Retry-After', String(e.retryAfterSeconds));
+          return response;
+        }
+        return json({ error: e instanceof Error ? e.message : 'Kalshi feed unavailable' }, 502);
+      }
     }
-    const leagueCompare = new RegExp('^/api/leagues/(nfl|nhl|mlb|wnba|ncaaf|ncaam)/compare$').exec(url.pathname);
+    const leagueCompare = new RegExp('^/api/leagues/(nfl|nhl|mlb|wnba|ncaaf|ncaam|ncaav)/compare$').exec(url.pathname);
     if (leagueCompare) {
       if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
       const league = leagueCompare[1];
-      const sportPaths: Record<string, string> = { nfl:'football/nfl', nhl:'hockey/nhl', mlb:'baseball/mlb', wnba:'basketball/wnba', ncaaf:'football/college-football', ncaam:'basketball/mens-college-basketball' };
+      const sportPaths: Record<string, string> = { nfl:'football/nfl', nhl:'hockey/nhl', mlb:'baseball/mlb', wnba:'basketball/wnba', ncaaf:'football/college-football', ncaam:'basketball/mens-college-basketball', ncaav:'volleyball/womens-college-volleyball' };
       const left = url.searchParams.get('left'), right = url.searchParams.get('right');
       const sample = Number(url.searchParams.get('sample') || 5);
       if (!left || !right || left === right || !/^[0-9]+$/.test(left) || !/^[0-9]+$/.test(right) || ![5,10,20].includes(sample)) return json({ error:'Select two different teams and a valid game range.' },400);
       try {
         const now = new Date(); const start = new Date(now.getTime() - (league === 'nfl' || league === 'ncaaf' ? 160 : 210) * 86400000);
-        const windows: string[] = [];
-        const cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
-        const fmt = (d: Date) => d.toISOString().slice(0,10).replace(/-/g,'');
-        while (cursor <= now) {
-          const y=cursor.getUTCFullYear(), m=cursor.getUTCMonth();
-          const first = new Date(Math.max(start.getTime(),Date.UTC(y,m,1)));
-          const last = new Date(Math.min(now.getTime(),Date.UTC(y,m+1,0)));
-          windows.push(fmt(first)+'-'+fmt(last)); cursor.setUTCMonth(cursor.getUTCMonth()+1);
+        const volleyball = league === 'ncaav';
+        const paths: string[] = [];
+        if (volleyball) {
+          // ESPN volleyball scoreboards accept single dates. Use each selected team's season schedule for history.
+          for (const season of new Set([start.getUTCFullYear(), now.getUTCFullYear()])) {
+            for (const team of [left, right]) paths.push('teams/' + team + '/schedule?season=' + season);
+          }
+        } else {
+          const cursor = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));
+          const fmt = (d: Date) => d.toISOString().slice(0,10).replace(/-/g,'');
+          while (cursor <= now) {
+            const y=cursor.getUTCFullYear(), m=cursor.getUTCMonth();
+            const first = new Date(Math.max(start.getTime(),Date.UTC(y,m,1)));
+            const last = new Date(Math.min(now.getTime(),Date.UTC(y,m+1,0)));
+            paths.push('scoreboard?dates=' + fmt(first) + '-' + fmt(last) + '&limit=500');
+            cursor.setUTCMonth(m+1);
+          }
         }
-        type Competitor = { homeAway?:string; score?:string; team?:{id?:string} };
-        type Event = { id?:string; date?:string; status?:{type?:{completed?:boolean}}; competitions?:{competitors?:Competitor[]}[] };
-        const pages = await Promise.all(windows.map(async dates => {
-          const response = await fetch('https://site.api.espn.com/apis/site/v2/sports/'+sportPaths[league]+'/scoreboard?dates='+dates+'&limit=500', {signal:AbortSignal.timeout(12000)});
-          if (!response.ok) throw new Error('ESPN scoreboard HTTP '+response.status);
+        type Competitor = { homeAway?:string; score?:EspnScore; team?:{id?:string} };
+        type EventStatus = { type?: { completed?: boolean } };
+        type Event = { id?:string; date?:string; status?:EventStatus; competitions?:{status?:EventStatus; competitors?:Competitor[]}[] };
+        const pages = await Promise.all(paths.map(async path => {
+          const response = await fetch('https://site.api.espn.com/apis/site/v2/sports/' + sportPaths[league] + '/' + path, {signal:AbortSignal.timeout(12000)});
+          if (!response.ok) throw new Error('ESPN history HTTP ' + response.status);
           const data = await response.json() as {events?:Event[]};
-          if (!Array.isArray(data.events)) throw new Error('ESPN scoreboard schema changed');
+          if (!Array.isArray(data.events)) throw new Error('ESPN history schema changed');
           return data.events;
         }));
         const all = new Map<string,{id:string;date:string;home:string;away:string;hs:number;as:number}>();
         for (const event of pages.flat()) {
-          if (!event.id || !event.date || !event.status?.type?.completed) continue;
+          const completed = event.status?.type?.completed ?? event.competitions?.[0]?.status?.type?.completed;
+          if (!event.id || !event.date || !completed) continue;
+          if (volleyball && (Date.parse(event.date) < start.getTime() || Date.parse(event.date) > now.getTime())) continue;
           const competitors=event.competitions?.[0]?.competitors || [];
           const home=competitors.find(c=>c.homeAway==='home'),away=competitors.find(c=>c.homeAway==='away');
-          if (!home?.team?.id || !away?.team?.id || !/^\\d+$/.test(String(home.score)) || !/^\\d+$/.test(String(away.score))) continue;
+          if (!home?.team?.id || !away?.team?.id) continue;
+          const hs = volleyball ? scoreValue(home.score) : /^\d+$/.test(String(home.score)) ? Number(home.score) : NaN;
+          const as = volleyball ? scoreValue(away.score) : /^\d+$/.test(String(away.score)) ? Number(away.score) : NaN;
+          if (!Number.isInteger(hs) || !Number.isInteger(as) || hs < 0 || as < 0) continue;
           if (![left,right].includes(home.team.id) && ![left,right].includes(away.team.id)) continue;
-          all.set(event.id,{id:event.id,date:event.date,home:home.team.id,away:away.team.id,hs:Number(home.score),as:Number(away.score)});
+          all.set(event.id,{id:event.id,date:event.date,home:home.team.id,away:away.team.id,hs,as});
         }
         const games=[...all.values()].sort((a,b)=>b.date.localeCompare(a.date));
         const summarizeTeam=(id:string)=>{
@@ -447,18 +483,19 @@ export default {
           nhl:{unit:'goals',formMetrics:['pointsFor','pointsAgainst','wins','losses'],advancedMetrics:['shotsOnGoal','savePercentage','powerPlayPercentage','penaltyKillPercentage']},
           mlb:{unit:'runs',formMetrics:['pointsFor','pointsAgainst','wins','losses'],advancedMetrics:['hits','earnedRunAverage','whip','onBasePercentage','bullpenEra']},
           wnba:{unit:'points',formMetrics:['pointsFor','pointsAgainst','wins','losses'],advancedMetrics:['fieldGoalPercentage','rebounds','assists','turnovers']},
+          ncaav:{unit:'sets',formMetrics:['setsWon','setsLost','wins','losses'],advancedMetrics:['hittingPercentage','kills','digs','blocks']},
           ncaam:{unit:'points',formMetrics:['pointsFor','pointsAgainst','wins','losses'],advancedMetrics:['fieldGoalPercentage','rebounds','assists','turnovers','offensiveEfficiency']}
         };
         const profile=metricProfiles[league];
         if (!a.games || !b.games) return json({error:'Insufficient completed games returned by ESPN for one or both teams.'},502);
-        return json({source:'ESPN public scoreboard',league,fetchedAt:new Date().toISOString(),sample,left:a,right:b,h2h,metricProfile:{unit:profile.unit,available:profile.formMetrics,unavailable:profile.advancedMetrics},partial:a.games<sample||b.games<sample,note:'Completed games within the available date window. Public ESPN date ranges may be truncated; historical coverage is not guaranteed.'});
+        return json({source:volleyball ? 'ESPN team schedules' : 'ESPN public scoreboard',league,fetchedAt:new Date().toISOString(),sample,left:a,right:b,h2h,metricProfile:{unit:profile.unit,available:profile.formMetrics,unavailable:profile.advancedMetrics},partial:a.games<sample||b.games<sample,note:volleyball ? 'Completed matches from ESPN team schedules. Scores are sets won.' : 'Completed games within the available date window. Public ESPN date ranges may be truncated; historical coverage is not guaranteed.'});
       } catch(e) { return json({error:e instanceof Error?e.message:'ESPN comparison unavailable'},502); }
     }
     if (url.pathname.startsWith('/api/leagues/')) {
       if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
-      const match = new RegExp('^/api/leagues/(nfl|nhl|mlb|wnba|ncaaf|ncaam)/teams$').exec(url.pathname);
+      const match = new RegExp('^/api/leagues/(nfl|nhl|mlb|wnba|ncaaf|ncaam|ncaav)/teams$').exec(url.pathname);
       if (!match) return json({ error: 'Unknown league' }, 404);
-      const leagues: Record<string, string> = { nfl: 'football/nfl', nhl: 'hockey/nhl', mlb: 'baseball/mlb', wnba: 'basketball/wnba', ncaaf: 'football/college-football', ncaam: 'basketball/mens-college-basketball' };
+      const leagues: Record<string, string> = { nfl: 'football/nfl', nhl: 'hockey/nhl', mlb: 'baseball/mlb', wnba: 'basketball/wnba', ncaaf: 'football/college-football', ncaam: 'basketball/mens-college-basketball', ncaav: 'volleyball/womens-college-volleyball' };
       try {
         const response = await fetch('https://site.api.espn.com/apis/site/v2/sports/' + leagues[match[1]] + '/teams?limit=500', { signal: AbortSignal.timeout(12000), headers: { Accept: 'application/json' } });
         if (!response.ok) throw new Error('ESPN teams HTTP ' + response.status);
