@@ -249,7 +249,16 @@ export default {
               return aliases.some(alias => title.includes(normalize(alias)));
             });
           });
-          return matches.length === 1 ? matches[0] : undefined;
+          // ESPN date windows overlap; the same fixture can appear in multiple responses.
+          // Collapse repeated scoreboard records before assessing ambiguity.
+          const unique = new Map<string, ScoreGame>();
+          for (const game of matches) {
+            const teams = game.competitions?.[0]?.competitors || [];
+            const key = (game.date || '') + ':' +
+              teams.map(({ team }) => normalize(team?.displayName || team?.name || '')).sort().join(':');
+            unique.set(key, game);
+          }
+          return unique.size === 1 ? [...unique.values()][0] : undefined;
         };
         const gameStatus = new Map<string, 'live' | 'upcoming'>();
         const eventIds = new Map<string, Event>();
