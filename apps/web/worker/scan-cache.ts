@@ -47,7 +47,14 @@ export async function sharedScan(db: ScanDatabase, min: number, max: number, fet
   const now = options.now ?? Date.now;
   const wait = options.wait ?? sleep;
   const token = options.token ?? crypto.randomUUID();
-  const initial = await read(db, key);
+  let initial: Row | null;
+  try {
+    initial = await read(db, key);
+  } catch (error) {
+    if (!(error instanceof Error) || !/\bno such table:\s+(?:main\.)?scan_cache\b/i.test(error.message)) throw error;
+    // The binding can exist before the cache migration has been applied.
+    return uncachedScan(await fetchSnapshot(AbortSignal.timeout(SCAN_DEADLINE_MS)), min, max);
+  }
   if (initial?.snapshot && (initial.expires_at ?? 0) > now()) {
     return filter(JSON.parse(initial.snapshot) as ScanSnapshot, min, max, 'hit', now());
   }
