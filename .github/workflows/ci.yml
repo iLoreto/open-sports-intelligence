@@ -17,7 +17,7 @@ jobs:
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
       - run: npm ci --no-audit --no-fund
-      - run: npm run test:cache && npm run test:nba-api && npm run test:nhl-xg
+      - run: npm run test:scanner && npm run test:cache && npm run test:nba-api && npm run test:nhl-xg
       - run: npm run typecheck:worker
       - run: npm run build
       - name: Install Playwright test runner and Chromium
