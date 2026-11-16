@@ -236,7 +236,7 @@ export default {
         const normalize = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, '');
         const gameMatch = (eventTitle: string): ScoreGame | undefined => {
           // A matchup must explicitly name both opponents; ambiguous aliases are not sufficient.
-          if (!/\\b(?:at|vs|versus|v)\\b|@/i.test(eventTitle)) return undefined;
+          if (!/\b(?:at|vs|versus|v)\b|@/i.test(eventTitle)) return undefined;
           const title = normalize(eventTitle);
           const matches = eligibleGames.filter(game => {
             const teams = game.competitions?.[0]?.competitors || [];
